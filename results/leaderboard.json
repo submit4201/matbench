@@ -1,0 +1,22 @@
+{
+  "p3": {
+    "name": "Quality Focused",
+    "total_wins": 1,
+    "total_runs": 1,
+    "scenarios_won": [
+      "stable_market"
+    ]
+  },
+  "p2": {
+    "name": "Conservative",
+    "total_wins": 0,
+    "total_runs": 1,
+    "scenarios_won": []
+  },
+  "p1": {
+    "name": "Aggressive Pricer",
+    "total_wins": 0,
+    "total_runs": 1,
+    "scenarios_won": []
+  }
+}

@@ -1,0 +1,462 @@
+import React, { useState, useEffect } from 'react';
+
+interface Ticket {
+  id: string;
+  type: string;
+  description: string;
+  status: string;
+}
+
+interface InventoryMetrics {
+  stock_level: number;
+  burn_rate: number;
+  days_of_supply: number;
+  status: string;
+  recommendation: string;
+}
+
+interface Laundromat {
+  name: string;
+  balance: number;
+  reputation: number;
+  social_score: number;
+  price: number;
+  inventory: { [key: string]: number };
+  inventory_metrics?: InventoryMetrics;
+  tickets: Ticket[];
+}
+
+interface Vendor {
+  id: string;
+  name: string;
+  slogan: string;
+  tier: string;
+  prices: { [key: string]: number };
+  reliability: number;
+  delivery_days: number;
+  special_offer?: {
+    item_name: string;
+    price: number;
+    description: string;
+    min_quantity: number;
+  };
+}
+
+interface SupplyChainEvent {
+  type: string;
+  vendor_id: string | null;
+  description: string;
+  severity: string;
+}
+
+interface GameState {
+  week: number;
+  season: string;
+  laundromats: { [key: string]: Laundromat };
+  events: string[];
+  messages: string[];
+  alliances: string[];
+  market: {
+    vendors: Vendor[];
+    supply_chain_events: SupplyChainEvent[];
+  };
+}
+
+const GameInterface: React.FC = () => {
+  const [state, setState] = useState<GameState | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  // Diplomacy UI State
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showAllianceModal, setShowAllianceModal] = useState(false);
+  const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
+  const [messageContent, setMessageContent] = useState('');
+  const [allianceDuration, setAllianceDuration] = useState(4);
+
+  const fetchState = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/state');
+      const data = await res.json();
+      setState(data);
+    } catch (err) {
+      console.error("Failed to fetch state", err);
+    }
+  };
+
+  const nextTurn = async () => {
+    setLoading(true);
+    await fetch('http://localhost:8000/next_turn', { method: 'POST' });
+    setPendingActions(0); // Clear pending actions after turn processes
+    await fetchState();
+    setLoading(false);
+  };
+
+  const buySupplies = async (item: string, qty: number, vendorId: string = 'bulkwash') => {
+    await fetch('http://localhost:8000/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: 'p1',
+        action_type: 'buy_supplies',
+        parameters: { item, quantity: qty, vendor_id: vendorId }
+      })
+    });
+    setPendingActions(p => p + 1);
+    alert(`Queued: Order ${qty} ${item} from ${vendorId} (will apply on Next Week)`);
+  };
+
+  const resolveTicket = async (ticketId: string) => {
+    await fetch('http://localhost:8000/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: 'p1',
+        action_type: 'resolve_ticket',
+        parameters: { ticket_id: ticketId }
+      })
+    });
+    setPendingActions(p => p + 1);
+    alert("Ticket resolution queued!");
+    fetchState();
+  };
+
+  const sendMessage = async () => {
+    if (!selectedCompetitor || !messageContent.trim()) return;
+    await fetch('http://localhost:8000/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: 'p1',
+        action_type: 'send_message',
+        parameters: { recipient: selectedCompetitor, content: messageContent }
+      })
+    });
+    alert(`Message queued for ${selectedCompetitor}!`);
+    setPendingActions(p => p + 1);
+    setShowMessageModal(false);
+    setMessageContent('');
+    setSelectedCompetitor(null);
+  };
+
+  const proposeAlliance = async () => {
+    if (!selectedCompetitor) return;
+    await fetch('http://localhost:8000/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: 'p1',
+        action_type: 'propose_alliance',
+        parameters: { target: selectedCompetitor, duration: allianceDuration }
+      })
+    });
+    alert(`Alliance proposal queued for ${selectedCompetitor}!`);
+    setPendingActions(p => p + 1);
+    setShowAllianceModal(false);
+    setAllianceDuration(4);
+    setSelectedCompetitor(null);
+  };
+
+  const openMessageModal = (competitorId: string) => {
+    setSelectedCompetitor(competitorId);
+    setShowMessageModal(true);
+  };
+
+  const [pendingActions, setPendingActions] = useState(0);
+
+  const openAllianceModal = (competitorId: string) => {
+    setSelectedCompetitor(competitorId);
+    setShowAllianceModal(true);
+  };
+
+  const [showVendorModal, setShowVendorModal] = useState(false);
+
+  const negotiatePrice = async (vendorId: string, item: string) => {
+    await fetch('http://localhost:8000/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: 'p1',
+        action_type: 'negotiate',
+        parameters: { vendor_id: vendorId, item: item }
+      })
+    });
+    setPendingActions(p => p + 1);
+    alert(`Negotiation for ${item} with ${vendorId} initiated! Check messages next turn.`);
+  };
+
+  const openVendorModal = () => {
+    setShowVendorModal(true);
+  };
+
+  const restartGame = async () => {
+    if (!confirm("Are you sure you want to restart the game?")) return;
+    await fetch('http://localhost:8000/reset', { method: 'POST' });
+    setPendingActions(0);
+    await fetchState();
+    alert("Game restarted!");
+  };
+
+  useEffect(() => {
+    fetchState();
+  }, []);
+
+  if (!state) return <div>Loading Laundromat OS...</div>;
+
+  const myLaundromat = state.laundromats['p1'];
+  const competitors = Object.entries(state.laundromats).filter(([id]) => id !== 'p1');
+  const metrics = myLaundromat.inventory_metrics;
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'Arial', maxWidth: '1200px', margin: '0 auto' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h1>🧼 Laundromat Tycoon 2.0</h1>
+        <div style={{ textAlign: 'right' }}>
+          <h3>Week {state.week} | {state.season}</h3>
+          {pendingActions > 0 && (
+            <p style={{ color: '#ff9800', margin: '5px 0' }}>📋 {pendingActions} action(s) queued for this turn</p>
+          )}
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button 
+              onClick={openVendorModal}
+              style={{ padding: '10px 20px', fontSize: '16px', background: '#2196F3', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            >
+              🚚 Vendor Hub
+            </button>
+            <button 
+              onClick={restartGame}
+              style={{ padding: '10px 20px', fontSize: '16px', background: '#f44336', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            >
+              🔄 Restart
+            </button>
+            <button 
+              onClick={nextTurn} 
+              disabled={loading}
+              style={{ padding: '10px 20px', fontSize: '18px', background: 'green', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            >
+              {loading ? "Simulating..." : "Next Week >>"}
+            </button>
+          </div>
+        </div>
+      </header>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+        {/* My Stats */}
+        <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', background: '#f9f9f9' }}>
+          <h2 style={{ borderBottom: '2px solid #333', paddingBottom: '10px' }}>🏢 {myLaundromat.name}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
+            <div>💰 Balance: <strong>${myLaundromat.balance.toFixed(2)}</strong></div>
+            <div>⭐ Reputation: <strong>{myLaundromat.reputation.toFixed(1)}</strong></div>
+            <div>⚖️ Social Score: <strong>{myLaundromat.social_score.toFixed(1)}</strong></div>
+          </div>
+          
+          <h4>📦 Inventory Management</h4>
+          {metrics && (
+            <div style={{ marginBottom: '10px', padding: '10px', background: '#e3f2fd', borderRadius: '4px', fontSize: '0.9em' }}>
+                <div><strong>Burn Rate:</strong> {metrics.burn_rate} loads/day</div>
+                <div><strong>Days Supply:</strong> {metrics.days_of_supply} days</div>
+                <div style={{ color: metrics.status === 'Critical' ? 'red' : metrics.status === 'Low' ? 'orange' : 'green' }}>
+                    <strong>Status:</strong> {metrics.status}
+                </div>
+                <div><em>{metrics.recommendation}</em></div>
+            </div>
+          )}
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {Object.entries(myLaundromat.inventory).map(([item, qty]) => (
+              <li key={item} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <span>{item}: {qty}</span>
+                <span style={{ fontSize: '0.8em', color: 'gray' }}>(Use Vendor Hub to buy)</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Tickets & Events */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', background: '#fff' }}>
+            <h3>🎫 Active Tickets</h3>
+            {myLaundromat.tickets.filter(t => t.status === 'open').length === 0 ? <p style={{ color: 'gray' }}>No active issues.</p> : null}
+            {myLaundromat.tickets.filter(t => t.status === 'open').map(t => (
+                <div key={t.id} style={{ background: '#fff0f0', borderLeft: '4px solid #ff4444', margin: '5px 0', padding: '10px' }}>
+                <strong>{t.type}</strong>: {t.description}
+                <br/>
+                <button onClick={() => resolveTicket(t.id)} style={{ marginTop: '5px' }}>Resolve (+2 Social)</button>
+                </div>
+            ))}
+            </div>
+
+            <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', background: '#f0f8ff' }}>
+            <h3>📢 News & Events</h3>
+            <ul style={{ paddingLeft: '20px' }}>
+                {state.events.length === 0 && <li>No major events.</li>}
+                {state.events.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+            
+            {state.market?.supply_chain_events && state.market.supply_chain_events.length > 0 && (
+                <div style={{ marginTop: '15px', borderTop: '1px solid #ccc', paddingTop: '10px' }}>
+                    <h4>🚚 Supply Chain Alerts</h4>
+                    {state.market.supply_chain_events.map((e, i) => (
+                        <div key={i} style={{ 
+                            padding: '5px', 
+                            marginBottom: '5px', 
+                            background: e.severity === 'critical' ? '#ffebee' : '#fff3e0',
+                            borderLeft: `3px solid ${e.severity === 'critical' ? 'red' : 'orange'}`
+                        }}>
+                            <strong>{e.vendor_id ? `[${e.vendor_id}] ` : ''}</strong>
+                            {e.description}
+                        </div>
+                    ))}
+                </div>
+            )}
+            </div>
+        </div>
+
+        {/* Competitors & Diplomacy */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', background: '#fff' }}>
+                <h3>👥 Competitors</h3>
+                {competitors.map(([id, l]) => (
+                    <div key={id} style={{ marginBottom: '10px', padding: '10px', background: '#eee', borderRadius: '4px' }}>
+                        <strong>{l.name}</strong> <span style={{color: '#888', fontSize: '0.8em'}}>({id})</span>
+                        <div style={{ fontSize: '0.9em', marginBottom: '8px' }}>
+                            Price: ${l.price?.toFixed(2) || '?.??'} | Rep: {l.reputation?.toFixed(0)} | Social: {l.social_score?.toFixed(0)}
+                        </div>
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                            <button onClick={() => openMessageModal(id)} style={{ padding: '3px 8px', fontSize: '0.85em' }}>💬 Message</button>
+                            <button onClick={() => openAllianceModal(id)} style={{ padding: '3px 8px', fontSize: '0.85em', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '3px' }}>🤝 Propose Alliance</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', background: '#fff' }}>
+                <h3>💬 Diplomacy / Messages</h3>
+                {state.messages.length === 0 ? <p style={{ color: 'gray' }}>No new messages.</p> : (
+                    <ul style={{ paddingLeft: '20px' }}>
+                        {state.messages.map((m, i) => <li key={i}>{m}</li>)}
+                    </ul>
+                )}
+                {state.alliances.length > 0 && (
+                    <div style={{ marginTop: '10px', borderTop: '1px solid #eee', paddingTop: '5px' }}>
+                        <strong>Active Alliances:</strong>
+                        <ul>{state.alliances.map((a, i) => <li key={i}>{a}</li>)}</ul>
+                    </div>
+                )}
+            </div>
+        </div>
+      </div>
+
+      {/* Message Modal */}
+      {showMessageModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', width: '400px' }}>
+            <h3>💬 Send Message to {selectedCompetitor}</h3>
+            <textarea 
+              value={messageContent}
+              onChange={(e) => setMessageContent(e.target.value)}
+              placeholder="Enter your message..."
+              style={{ width: '100%', height: '100px', marginBottom: '10px', padding: '8px', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowMessageModal(false)} style={{ padding: '8px 16px' }}>Cancel</button>
+              <button onClick={sendMessage} style={{ padding: '8px 16px', background: '#2196F3', color: 'white', border: 'none', borderRadius: '4px' }}>Send</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alliance Modal */}
+      {showAllianceModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', width: '350px' }}>
+            <h3>🤝 Propose Alliance to {selectedCompetitor}</h3>
+            <p style={{ color: '#666', fontSize: '0.9em' }}>Alliances create non-aggression pacts. Breaking them hurts your social score.</p>
+            <div style={{ marginBottom: '15px' }}>
+              <label>Duration (weeks): </label>
+              <input 
+                type="number" 
+                value={allianceDuration}
+                onChange={(e) => setAllianceDuration(parseInt(e.target.value) || 4)}
+                min={1}
+                max={12}
+                style={{ width: '60px', padding: '4px' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAllianceModal(false)} style={{ padding: '8px 16px' }}>Cancel</button>
+              <button onClick={proposeAlliance} style={{ padding: '8px 16px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px' }}>Propose</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vendor Hub Modal */}
+      {showVendorModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', width: '800px', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2>🚚 Vendor Hub</h2>
+                <button onClick={() => setShowVendorModal(false)} style={{ fontSize: '20px', border: 'none', background: 'none', cursor: 'pointer' }}>✖</button>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                {state.market?.vendors.map(vendor => (
+                    <div key={vendor.id} style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', background: '#f9f9f9' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <h3 style={{ margin: '0 0 5px 0' }}>{vendor.name}</h3>
+                            <span style={{ fontSize: '0.8em', background: '#eee', padding: '2px 6px', borderRadius: '4px' }}>{vendor.tier}</span>
+                        </div>
+                        <p style={{ fontStyle: 'italic', color: '#666', margin: '0 0 10px 0' }}>"{vendor.slogan}"</p>
+                        
+                        {vendor.special_offer && (
+                            <div style={{ background: '#e8f5e9', padding: '8px', borderRadius: '4px', marginBottom: '10px', border: '1px solid #4caf50' }}>
+                                <strong>🌟 Special Offer:</strong> {vendor.special_offer.description}
+                            </div>
+                        )}
+                        
+                        <div style={{ fontSize: '0.9em', marginBottom: '10px' }}>
+                            <div>Reliability: {(vendor.reliability * 100).toFixed(0)}%</div>
+                            <div>Delivery: {vendor.delivery_days} days</div>
+                        </div>
+
+                        <table style={{ width: '100%', fontSize: '0.9em', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid #ddd' }}>
+                                    <th style={{ textAlign: 'left' }}>Item</th>
+                                    <th style={{ textAlign: 'right' }}>Price</th>
+                                    <th style={{ textAlign: 'right' }}>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {Object.entries(vendor.prices).map(([item, price]) => (
+                                    <tr key={item} style={{ borderBottom: '1px solid #eee' }}>
+                                        <td style={{ padding: '5px 0' }}>{item}</td>
+                                        <td style={{ textAlign: 'right' }}>${price.toFixed(2)}</td>
+                                        <td style={{ textAlign: 'right' }}>
+                                            <button 
+                                                onClick={() => buySupplies(item, 100, vendor.id)} 
+                                                style={{ marginRight: '5px', padding: '2px 6px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                            >
+                                                Buy 100
+                                            </button>
+                                            <button 
+                                                onClick={() => negotiatePrice(vendor.id, item)}
+                                                style={{ padding: '2px 6px', background: '#FF9800', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                            >
+                                                Talk
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GameInterface;

@@ -1,0 +1,45 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Laundromat Tycoon Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .chart-container { width: 80%; margin: 20px auto; }
+    </style>
+</head>
+<body>
+    <h1>Laundromat Tycoon Results</h1>
+    
+    <div class="chart-container">
+        <h2>Balance Over Time</h2>
+        <canvas id="balanceChart"></canvas>
+    </div>
+    
+    <div class="chart-container">
+        <h2>Weekly Visits</h2>
+        <canvas id="visitsChart"></canvas>
+    </div>
+
+    <script>
+        const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
+        
+        new Chart(document.getElementById('balanceChart'), {
+            type: 'line',
+            data: {
+                labels: weeks,
+                datasets: [{"label": "p1 Balance", "data": [10102.0, 10198.0, 10294.0, 10384.0], "borderColor": "#FF6384", "fill": false}, {"label": "p2 Balance", "data": [9874.0, 9745.0, 9616.0, 9487.0], "borderColor": "#36A2EB", "fill": false}, {"label": "p3 Balance", "data": [9850.0, 9720.0, 9590.0, 9470.0], "borderColor": "#FFCE56", "fill": false}]
+            }
+        });
+        
+        new Chart(document.getElementById('visitsChart'), {
+            type: 'line',
+            data: {
+                labels: weeks,
+                datasets: [{"label": "p1 Visits", "data": [42, 41, 41, 40], "borderColor": "#FF6384", "fill": false}, {"label": "p2 Visits", "data": [8, 7, 7, 7], "borderColor": "#36A2EB", "fill": false}, {"label": "p3 Visits", "data": [0, 2, 2, 3], "borderColor": "#FFCE56", "fill": false}]
+            }
+        });
+    </script>
+</body>
+</html>
