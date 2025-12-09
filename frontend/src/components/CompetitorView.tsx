@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, TrendingUp, Star, DollarSign, Eye, Target, Zap, Trophy, Shield } from 'lucide-react';
+import { Users, TrendingUp, Star, DollarSign, Eye, Target, Trophy, Shield, Handshake } from 'lucide-react';
 import type { Laundromat } from '../types';
 
 interface CompetitorViewProps {
@@ -47,7 +47,7 @@ const CompetitorView: React.FC<CompetitorViewProps> = ({ competitors }) => {
       </div>
 
       {/* Competitor Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 flex-shrink-0">
+      <div className="flex gap-2 overflow-x-auto pb-1 flex-shrink-0 relative">
         {competitors.map((comp, i) => {
           const compScore = getSocialScoreValue(comp.social_score);
           const isSelected = selectedComp.id === comp.id;
@@ -76,6 +76,15 @@ const CompetitorView: React.FC<CompetitorViewProps> = ({ competitors }) => {
             </button>
           );
         })}
+        
+        {/* Diplomacy Button */}
+        <button 
+           onClick={() => console.log(`Propose Alliance to ${selectedComp.id}`)}
+           className="ml-auto flex items-center gap-2 px-4 py-3 bg-white border-2 border-indigo-100 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all flex-shrink-0"
+        >
+           <Handshake size={20} />
+           Propose Alliance
+        </button>
       </div>
 
       {/* Main Content */}

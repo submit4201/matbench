@@ -4,3 +4,6 @@ python-multipart
 requests
 pytest
 python-dotenv
+openai
+google-genai
+azure-ai-inference

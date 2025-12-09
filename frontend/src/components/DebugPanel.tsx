@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, Bug, Activity, Database, AlertCircle, X } from 'lucide-react';
+import { Bug, Activity, Database, AlertCircle, X } from 'lucide-react';
 import type { Laundromat, GameState } from '../types';
 
 interface DebugPanelProps {
@@ -119,7 +119,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ laundromat, gameState, onClose 
                   </div>
                 ) : (
                   <div className="p-4 bg-slate-800/50 rounded-lg text-slate-400 italic">
-                    Social score is a simple number ({laundromat.social_score}), not an object.
+                    Social score is a simple number ({typeof laundromat.social_score === 'number' ? laundromat.social_score : 'N/A'}), not an object.
                   </div>
                 )}
               </div>
@@ -142,9 +142,9 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ laundromat, gameState, onClose 
           {activeTab === 'events' && (
             <div>
                <h3 className="text-sm font-bold text-slate-100 mb-4">Active Engine Events</h3>
-               {laundromat.active_events && laundromat.active_events.length > 0 ? (
+               {(laundromat as any).active_events && (laundromat as any).active_events.length > 0 ? (
                  <div className="space-y-2">
-                   {laundromat.active_events.map((e, i) => (
+                   {((laundromat as any).active_events as string[]).map((e: string, i: number) => (
                      <div key={i} className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-200">
                        {e}
                      </div>

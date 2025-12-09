@@ -8,7 +8,7 @@ interface Scenario {
 }
 
 interface StartScreenProps {
-  onStartGame: (scenarioName: string) => void;
+  onStart: (scenarioName: string | null) => void;
 }
 
 const difficultyColors: { [key: string]: string } = {
@@ -18,7 +18,7 @@ const difficultyColors: { [key: string]: string } = {
   chaos: '#9C27B0'
 };
 
-const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
+const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,13 +42,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStartGame }) => {
       return;
     }
     
-    await fetch('http://localhost:8000/start_scenario', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scenario_name: selectedScenario })
-    });
-    
-    onStartGame(selectedScenario);
+    onStart(selectedScenario);
   };
 
   if (loading) {

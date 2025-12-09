@@ -1,0 +1,174 @@
+├── design_document.md
+├── docs
+│   ├── api_reference.md
+│   ├── frontend
+│   │   └── overview.md
+│   ├── README.md
+│   └── src
+│       ├── agents
+│       │   └── llm_agent.md
+│       ├── engine
+│       │   ├── finance
+│       │   │   └── overview.md
+│       │   ├── game_engine.md
+│       │   ├── population.md
+│       │   └── social.md
+│       ├── server.md
+│       └── world
+│           └── overview.md
+|  ------------- # doesnt need docs
+├── frontend
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   └── vite.svg
+│   ├── README.md
+│   ├── src
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── assets
+│   │   │   └── react.svg
+│   │   ├── components
+│   │   │   ├── AIThinkingPanel.css
+│   │   │   ├── AIThinkingPanel.tsx
+│   │   │   ├── CalendarWidget.tsx
+│   │   │   ├── CompetitorView.tsx
+│   │   │   ├── ControlPanel.tsx
+│   │   │   ├── CreditDashboard.tsx
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── DebugPanel.tsx
+│   │   │   ├── FinancialChart.tsx
+│   │   │   ├── FinancialPanel.tsx
+│   │   │   ├── HistoryViewer.css
+│   │   │   ├── HistoryViewer.tsx
+│   │   │   ├── MessageCenter.tsx
+│   │   │   ├── RevenuePanel.tsx
+│   │   │   ├── ScenarioSelector.css
+│   │   │   ├── ScenarioSelector.tsx
+│   │   │   ├── SocialScoreCard.tsx
+│   │   │   ├── TicketSystem.tsx
+│   │   │   ├── ToastContext.tsx
+│   │   │   ├── VendorHub.tsx
+│   │   │   ├── widgets
+│   │   │   │   ├── MachineWidget.tsx
+│   │   │   │   ├── MarketingWidget.tsx
+│   │   │   │   ├── PricingWidget.tsx
+│   │   │   │   ├── StaffWidget.tsx
+│   │   │   │   └── SupplyWidget.tsx
+│   │   │   └── ZoneCard.tsx
+│   │   ├── GameInterface.tsx.bak
+│   │   ├── index.css
+│   │   ├── Layout.tsx
+│   │   ├── main.tsx
+│   │   ├── StartScreen.tsx
+│   │   └── types.ts
+│   ├── tailwind.config.js
+│   ├── tsconfig.app.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   ├── vite.config.ts
+│   └── yarn.lock
+|  ------------- # aboce frontend will be documented in the frontend docs
+├── results
+│   ├── leaderboard.json
+│   └── stable_market_results.json
+├── src
+│   ├── agents
+│   │   ├── azure_helper.py
+│   │   ├── base_agent.py
+│   │   ├── extended_tools.py
+│   │   ├── gemini_helper.py
+│   │   ├── human_agent.py
+│   │   ├── __init__.py
+│   │   ├── llm_agent.py
+│   │   ├── meta_helper.py
+│   │   ├── mistral_helper.py
+│   │   ├── npc_helper.py
+│   │   ├── opsus_helper.py
+│   │   ├── phi_helper.py
+│   │   ├── README.md
+│   │   ├── rule_based
+│   │   │   ├── aggressive_pricer.py
+│   │   │   ├── balanced_agent.py
+│   │   │   ├── conservative_agent.py
+│   │   │   ├── __init__.py
+│   │   │   └── quality_focused.py
+│   │   └── tool_call_parser.py
+│   ├── benchmark
+│   │   ├── __init__.py
+│   │   ├── runner.py
+│   │   └── scenarios.py
+│   ├── config.py
+│   ├── engine
+│   │   ├── commerce
+│   │   │   ├── __init__.py
+│   │   │   ├── market.py
+│   │   │   ├── mergers.py
+│   │   │   ├── proposals.py
+│   │   │   ├── supply.py
+│   │   │   └── vendor.py
+│   │   ├── core
+│   │   │   ├── calendar.py
+│   │   │   ├── events.py
+│   │   │   ├── game_master.py
+│   │   │   ├── __init__.py
+│   │   │   └── time.py
+│   │   ├── enhanced_engine.py
+│   │   ├── finance
+│   │   │   ├── bank.py
+│   │   │   ├── bills.py
+│   │   │   ├── credit.py
+│   │   │   ├── __init__.py
+│   │   │   ├── ledger.py
+│   │   │   ├── loans.py
+│   │   │   ├── models.py
+│   │   │   └── tax.py
+│   │   ├── game_engine.py
+│   │   ├── history.py
+│   │   ├── __init__.py
+│   │   ├── llm_npc_factory.py
+│   │   ├── llm_utils.py
+│   │   ├── metrics_auditor.py
+│   │   ├── population
+│   │   │   ├── customer.py
+│   │   │   └── __init__.py
+│   │   ├── scoring.py
+│   │   ├── social
+│   │   │   ├── alliances.py
+│   │   │   ├── communication.py
+│   │   │   ├── ethical_events.py
+│   │   │   ├── __init__.py
+│   │   │   ├── narrative_manager.py
+│   │   │   └── neighborhood.py
+│   │   └── xml_parser.py
+│   ├── __init__.py
+│   ├── main.py
+│   ├── server.py
+│   └── world
+│       ├── event_ledger.py
+│       ├── __init__.py
+│       ├── laundromat.py
+│       ├── regulator.py
+│       ├── social.py
+│       └── ticket.py
+|  -------------
+├──── test
+|  -------------
+├── tree.txt
+└── world_bible
+    ├── 1_0_Tycoon_sim.md
+    ├── 1_2_starting_resources_equitment.md
+    ├── 2_0_world_bible_customer_neighborhood.md
+    ├── 2_1_wb_finace_system.md
+    ├── 2_2_wb_soial_sustems.md
+    ├── 2_3_rvender_systems.md
+    ├── 2_4_supply_chain.md
+    ├── 2_5_regulatory_law.md
+    ├── 2_6_buyouts_sles_neg.md
+    ├── 3_0_simularion_time_system.md
+    ├── 4_0_metrics_explinations.md
+    ├── 5_0_tech_info.md
+    └── 6_0_summary_and_research_scoring.md
