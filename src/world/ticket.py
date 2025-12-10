@@ -1,26 +1,19 @@
-from dataclasses import dataclass
-from enum import Enum
+"""
+Proxy for backward compatibility.
 
-class TicketType(Enum):
-    OUT_OF_SOAP = "out_of_soap"
-    MACHINE_BROKEN = "machine_broken"
-    DIRTY_FLOOR = "dirty_floor"
-    LONG_WAIT = "long_wait"
-    OTHER = "other"
+All models have been migrated to src/models/social.py.
+Import from there for new code.
+"""
 
-class TicketStatus(Enum):
-    OPEN = "open"
-    RESOLVED = "resolved"
-    EXPIRED = "expired"
+# Re-export from new location for backward compatibility
+from src.models.social import (
+    Ticket,
+    TicketType,
+    TicketStatus
+)
 
-@dataclass
-class Ticket:
-    id: str
-    type: TicketType
-    description: str
-    customer_id: str
-    laundromat_id: str
-    created_week: int
-    severity: str = "medium"
-    status: TicketStatus = TicketStatus.OPEN
-    resolution_week: int = -1
+__all__ = [
+    'Ticket',
+    'TicketType',
+    'TicketStatus'
+]

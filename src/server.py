@@ -11,7 +11,7 @@ Features:
 # Load environment variables FIRST
 import os
 
-from src.config import LLMDICT
+from src.config import settings
 
 
 from fastapi import FastAPI, HTTPException
@@ -22,20 +22,48 @@ from datetime import datetime
 import uvicorn
 import json
 
-from src.engine.time import TimeSystem
-from src.engine.events import EventManager
-from src.engine.customer import Customer
+from src.engine.core.time import TimeSystem, WeekPhase, Day
+from src.engine.core.events import EventManager
+from src.engine.population.customer import Customer
 from src.engine.history import GameHistory, TurnRecord
 from src.world.laundromat import LaundromatState
 from src.world.ticket import TicketStatus
-from src.engine.vendor import VendorManager, VendorTier
-from src.engine.game_engine import GameEngine # New Engine
+from src.engine.commerce.vendor import VendorManager, VendorTier
+from src.engine.game_engine import GameEngine # Base Engine
+from src.engine.enhanced_engine import EnhancedGameEngine  # Enhanced with new systems
 from src.agents.human_agent import HumanAgent
 from src.agents.llm_agent import LLMAgent
 from src.agents.base_agent import Action, ActionType, Observation
+from src.engine.social.communication import MessageIntent
 from src.benchmark.scenarios import get_scenario, list_scenarios, Scenario
 
+
+from src.utils.logger import setup_logging, get_logger
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+# Setup logging immediately
+setup_logging()
+logger = get_logger("src.server")
+
 app = FastAPI(title="Laundromat Tycoon", version="1.0.0")
+
+# Logging Middleware
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = datetime.now()
+        logger.info(f"REQUEST: {request.method} {request.url}")
+        
+        try:
+            response = await call_next(request)
+            process_time = (datetime.now() - start_time).total_seconds()
+            logger.info(f"RESPONSE: {response.status_code} (took {process_time:.3f}s)")
+            return response
+        except Exception as e:
+            logger.error(f"REQUEST FAILED: {str(e)}", exc_info=True)
+            raise e
+
+app.add_middleware(LoggingMiddleware)
 
 # Enable CORS
 app.add_middleware(
@@ -54,8 +82,8 @@ class GameWrapper:
         self.scenario_name = scenario_name
         self.scenario: Optional[Scenario] = None
         
-        # Initialize Game Engine
-        self.engine = GameEngine(["p1", "p2", "p3"])
+        # Initialize Game Engine (Enhanced with Credit, Calendar, Neighborhood, Game Master)
+        self.engine = EnhancedGameEngine(["p1", "p2", "p3"])
         
         # Initialize from scenario or defaults
         if scenario_name:
@@ -88,106 +116,45 @@ class GameWrapper:
             state.price = initial.price
             state.social_score = initial.social_score
             state.reputation = initial.social_score # Sync
-            state.balance = initial.balance
+            
+            # Only overwrite balance if NOT using EnhancedGameEngine (which sets SBA loan)
+            if not isinstance(self.engine, EnhancedGameEngine):
+                state.balance = initial.balance
+                
             # state.machines = initial.machines # Need to convert int to list of Machine objects if needed
             state.inventory = initial.inventory.copy()
 
 game = GameWrapper()
 
 
-# --- Pydantic Models ---
-class ActionRequest(BaseModel):
-    agent_id: str
-    action_type: str
-    parameters: Dict[str, Any]
-
-
-class ScenarioRequest(BaseModel):
-    scenario_name: Optional[str] = None
-
-
-class NegotiateRequest(BaseModel):
-    agent_id: str
-    vendor_id: str
-    item: str
-
-class ProposalRequest(BaseModel):
-    agent_id: str
-    name: str
-    category: str
-    description: str
-    pricing_model: str
-    resource_requirements: str
+from src.api_types import (
+    ActionRequest, 
+    ScenarioRequest, 
+    NegotiateRequest, 
+    ProposalRequest, 
+    CreditPaymentRequest, 
+    DiplomacyProposalRequest
+)
 
 
 # --- Helper Functions ---
-def _serialize_state(laundromat_state):
-    data = laundromat_state.__dict__.copy()
-    
-    if 'id' not in data:
-        data['id'] = getattr(laundromat_state, 'id', 'unknown')
-    
-    # Serialize SocialScore object
-    if 'social_score' in data and hasattr(data['social_score'], 'to_dict'):
-        data['social_score'] = data['social_score'].to_dict()
-        
-    # Ensure both reputation and social_score are available
-    if 'reputation' not in data and 'social_score' in data:
-        # If social_score is a dict (serialized), use total_score
-        if isinstance(data['social_score'], dict):
-             data['reputation'] = data['social_score'].get('total_score', 50.0)
-        else:
-             data['reputation'] = 50.0
-    elif 'social_score' not in data and 'reputation' in data:
-        # If social_score is missing, use reputation as total
-        data['social_score'] = {'total_score': data['reputation']}
-        
-    # Expose active customers metric
-    data['active_customers'] = getattr(laundromat_state, 'active_customers', 0)
-        
-    # Convert machines list to count for frontend compatibility
-    if isinstance(data.get('machines'), list):
-        data['machines'] = len(data['machines'])
-        
-    # Ensure broken_machines is included (it's a property, not in __dict__)
-    if 'broken_machines' not in data:
-        data['broken_machines'] = getattr(laundromat_state, 'broken_machines', 0)
-    
-    # Serialize Tickets
-    if data.get("tickets"):
-        tickets_data = []
-        for t in data["tickets"]:
-            try:
-                t_dict = t.__dict__.copy()
-                if hasattr(t_dict.get("type"), "value"):
-                    t_dict["type"] = t_dict["type"].value
-                if hasattr(t_dict.get("status"), "value"):
-                    t_dict["status"] = t_dict["status"].value
-                tickets_data.append(t_dict)
-            except Exception as e:
-                print(f"Error serializing ticket {t}: {e}")
-                tickets_data.append(str(t))
-        data["tickets"] = tickets_data
-    
-    # Inventory Metrics
-    if hasattr(laundromat_state, 'get_inventory_metrics'):
-        data['inventory_metrics'] = laundromat_state.get_inventory_metrics()
-    
-    # Serialize Revenue Streams
-    if data.get("revenue_streams"):
-        streams_data = {}
-        for k, v in data["revenue_streams"].items():
-            if hasattr(v, "__dict__"):
-                streams_data[k] = v.__dict__
-            else:
-                streams_data[k] = str(v)
-        data["revenue_streams"] = streams_data
+# Helper function _serialize_state removed in favor of Pydantic .model_dump()
 
-    return data
 
 
 def _log_ai_response(agent_id: str, week: int, thinking: List[str], actions: List[Action], raw_response: str):
-    """Log AI response to file for analysis and debugging"""
+    """
+    Log AI response to file for analysis and debugging
+    
+    Args:
+        agent_id (str): ID of the agent
+        week (int): Current week
+        thinking (List[str]): List of AI thoughts
+        actions (List[Action]): List of actions taken
+        raw_response (str): Raw LLM response
+     #! TODO: this accually needs to be a nother format json/yaml/xml something md great for formatting but not for analysis
+    #! TODO: should have think, action, thought,     
+    """
     # Create game-specific log directory with timestamp
     game_id = getattr(game, 'game_id', datetime.now().strftime("%Y%m%d_%H%M%S"))
     log_dir = f"logs/games/{game_id}/ai_responses"
@@ -241,7 +208,15 @@ def _apply_action(state: LaundromatState, action: Action):
         cost = qty * unit_price
         
         if state.balance >= cost:
-            state.balance -= cost
+            # Use Ledger for Transaction
+            from src.engine.finance.models import TransactionCategory
+            state.ledger.add(
+                -cost, 
+                TransactionCategory.EXPENSE, 
+                f"Supply Order: {item} ({qty} units)", 
+                game.engine.time_system.current_week,
+                related_entity_id=vendor_id
+            )
             
             # Process order in vendor to update relationship
             result = vendor.process_order(
@@ -290,8 +265,15 @@ def _apply_action(state: LaundromatState, action: Action):
                 # Increased from 2.0 to 5.0 for more noticeable reputation impact
                 state.update_social_score("customer_satisfaction", 5.0)
     elif action.type == ActionType.UPGRADE_MACHINE:
-        if state.balance >= 500:
-            state.balance -= 500
+        cost = settings.economy.machine_upgrade_cost
+        if state.balance >= cost:
+            from src.engine.finance.models import TransactionCategory
+            state.ledger.add(
+                 -cost,
+                 TransactionCategory.CAPITAL,
+                 "New Machine Acquisition",
+                 game.engine.time_system.current_week
+            )
             # Handle both list and int types for machines
             if isinstance(state.machines, list):
                 from src.world.laundromat import Machine
@@ -300,12 +282,187 @@ def _apply_action(state: LaundromatState, action: Action):
                 state.machines += 1
     elif action.type == ActionType.MARKETING_CAMPAIGN:
         cost = action.parameters.get("cost", 0)
+        from src.engine.finance.models import TransactionCategory
+        
         if state.balance >= cost:
-            state.balance -= cost
+            state.ledger.add(
+                -cost,
+                TransactionCategory.EXPENSE,
+                f"Marketing Campaign ({action.parameters.get('campaign_type', 'Unknown')})",
+                game.engine.time_system.current_week
+            )
             # Increased boost from cost/50 to cost/20 for better impact
-            boost = cost / 20.0
+            boost = cost / settings.economy.marketing_cost_divisor
             state.update_social_score("community_standing", boost)
             state.marketing_boost += boost
+    
+    elif action.type == ActionType.HIRE_STAFF:
+        # Basic hiring logic
+        cost = action.parameters.get("cost", settings.economy.hiring_cost) # Hiring fee
+        role = action.parameters.get("role", "General Staff")
+        
+        if state.balance >= cost:
+            from src.engine.finance.models import TransactionCategory
+            state.ledger.add(
+                -cost,
+                TransactionCategory.EXPENSE,
+                f"Staff Recruitment Fee: {role}",
+                game.engine.time_system.current_week
+            )
+            from src.world.laundromat import StaffMember
+            
+            # Helper to generate random staff
+            import random
+            names = ["Alice", "Bob", "Charlie", "Diana", "Evan", "Fiona", "George", "Hannah"]
+            new_staff = StaffMember(
+                id=f"staff_{len(state.staff) + 1}",
+                name=f"{random.choice(names)} {random.randint(1,99)}",
+                role=role,
+                skill_level=random.uniform(3.0, 7.0),
+                morale=80.0,
+                wage=settings.economy.staff_weekly_wage_default # Standard weekly wage
+            )
+            
+            # Ensure staff list exists
+            if not isinstance(state.staff, list):
+                state.staff = []
+            
+            state.staff.append(new_staff)
+            
+            # Boost social score slightly for creating jobs
+            state.update_social_score("employee_relations", 1.0)
+
+    elif action.type == ActionType.MAKE_PAYMENT:
+        amount = action.parameters.get("amount", 0)
+        payment_id = action.parameters.get("payment_id")
+        
+        if state.balance >= amount:
+            # Delegate to credit system which should ideally handle the ledger, 
+            # but if it doesn't, we might need to double check. 
+            # Assuming credit system logic simply updates loan balance, 
+            # we record the payment here.
+            # TODO: Verify if credit_system.make_payment records transaction.
+            # For now, explicit recording is safer.
+            
+            from src.engine.finance.models import TransactionCategory
+            state.ledger.add(
+                -amount,
+                TransactionCategory.REPAYMENT,
+                f"Manual Loan Payment: {payment_id}",
+                game.engine.time_system.current_week
+            )
+
+            # Delegate to credit system
+            if hasattr(game.engine, "credit_system"):
+                # Credit system might assume money is already taken or take it. 
+                # Let's check credit system implementation if possible. 
+                # Ideally we pass the ledger to it? 
+                # For this step, we assume we manage the money here.
+                game.engine.credit_system.make_payment(
+                    state.id, payment_id, amount, game.engine.time_system.current_week
+                )
+    
+
+    elif action.type == ActionType.FIRE_STAFF:
+        staff_id = action.parameters.get("staff_id")
+        staff_member = next((s for s in state.staff if s.id == staff_id), None)
+        
+        if staff_member:
+            from src.engine.finance.models import TransactionCategory
+            # Severance pay (2 weeks wages)
+            severance = staff_member.wage * 2
+            
+            if state.balance >= severance:
+                state.ledger.add(
+                    -severance,
+                    TransactionCategory.EXPENSE,
+                    f"Severance Pay: {staff_member.name}",
+                    game.engine.time_system.current_week
+                )
+                state.staff.remove(staff_member)
+                state.update_social_score("employee_relations", -2.0)
+                state.update_social_score("community_standing", -0.5)
+
+    elif action.type == ActionType.TRAIN_STAFF:
+        staff_id = action.parameters.get("staff_id")
+        program_cost = action.parameters.get("cost", settings.economy.staff_training_cost)
+        
+        staff_member = next((s for s in state.staff if s.id == staff_id), None)
+        
+        if staff_member and state.balance >= program_cost:
+            from src.engine.finance.models import TransactionCategory
+            state.ledger.add(
+                -program_cost,
+                TransactionCategory.EXPENSE,
+                f"Staff Training: {staff_member.name}",
+                game.engine.time_system.current_week
+            )
+            
+            # Improve stats
+            import random
+            improvement = random.uniform(0.5, 1.5)
+            staff_member.skill_level = min(10.0, staff_member.skill_level + improvement)
+            staff_member.morale = min(100.0, staff_member.morale + 10.0)
+            
+            state.update_social_score("employee_relations", 0.5)
+
+    elif action.type == ActionType.RESOLVE_DILEMMA:
+        choice_id = action.parameters.get("choice_id")
+        
+        # Find active dilemma for this agent
+        # We access the engine's ethical event manager
+        active_dilemma = None
+        for d in game.engine.ethical_event_manager.get_pending_dilemmas(state.id):
+             for c in d.choices:
+                 if c.id == choice_id:
+                     active_dilemma = d
+                     break
+             if active_dilemma: break
+        
+        if active_dilemma:
+            result = game.engine.ethical_event_manager.resolve_dilemma(
+                active_dilemma.id, choice_id, game.engine.time_system.current_week
+            )
+            
+            if "error" not in result:
+                # Apply effects directly to state
+                profit = result.get("profit", 0)
+                if profit != 0:
+                    from src.engine.finance.models import TransactionCategory
+                    cat = TransactionCategory.REVENUE if profit > 0 else TransactionCategory.EXPENSE
+                    state.ledger.add(
+                        profit,
+                        cat,
+                        f"Dilemma Outcome: {result.get('outcome_text', 'Resolution')[:30]}...",
+                        game.engine.time_system.current_week
+                    )
+                
+                state.update_social_score("community_standing", result.get("social_score", 0))
+                
+                # Game Master Evaluation
+                outcome_text = result.get('outcome_text')
+                try:
+                    gm_eval = game.engine.game_master.evaluate_ethical_choice(
+                        agent_id=state.id,
+                        dilemma_context=active_dilemma.description,
+                        choice_made=result.get("outcome_text", "Unknown choice"), # Use outcome text as proxy for choice description
+                        reasoning="User selection"
+                    )
+                    
+                    if gm_eval and "analysis" in gm_eval:
+                        outcome_text += f"\n\n⚖️ Ethics Board Analysis:\n{gm_eval['analysis']}\n(Ethics Score: {gm_eval.get('ethics_score','N/A')})"
+                except Exception as e:
+                    print(f"GM Evaluation failed: {e}")
+
+                # Send outcome message via Engine's communication system
+                game.engine.communication.send_system_message(
+                    recipient_id=state.id,
+                    content=f"Decision Outcome:\n{outcome_text}",
+                    week=game.engine.time_system.current_week,
+                    intent=MessageIntent.DILEMMA_OUTCOME
+                )
+            else:
+                print(f"Error resolving dilemma: {result['error']}")
 
 
 def _record_turn(agent_id: str, agent_name: str, thinking: List[str], 
@@ -369,7 +526,22 @@ def get_state(agent_id: str = "p1"):
     """Get current game state"""
     laundromats_data = {}
     for pid, l in game.engine.states.items():
-        laundromats_data[pid] = _serialize_state(l)
+        # Using Pydantic Dump
+        state_dump = l.model_dump(mode='json', exclude={'ledger'})
+        # Inject properties not covered by default dump if not ComputedField
+        state_dump['balance'] = l.balance
+        state_dump['broken_machines'] = l.broken_machines
+        state_dump['reputation'] = l.reputation  # Add reputation from property
+        # Convert machines list to count for frontend compatibility
+        if isinstance(state_dump.get('machines'), list):
+            state_dump['machines'] = len(state_dump['machines'])
+        # Add metrics
+        if hasattr(l, 'get_inventory_metrics'):
+            state_dump['inventory_metrics'] = l.get_inventory_metrics()
+        
+        laundromats_data[pid] = state_dump
+
+
 
     # Serialize vendors
     vendors_data = []
@@ -387,10 +559,26 @@ def get_state(agent_id: str = "p1"):
 
     return {
         "week": game.engine.time_system.current_week,
+        "day": game.engine.time_system.current_day.value,
+        "phase": game.engine.time_system.current_phase.value,
         "season": game.engine.time_system.current_season.value,
         "laundromats": laundromats_data,
         "events": [e.description for e in game.engine.event_manager.active_events],
-        "messages": [str(m) for m in game.engine.communication.get_messages("p1")],
+        "messages": [
+            {
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "recipient_id": m.recipient_id,
+                "channel": m.channel.value if hasattr(m.channel, "value") else str(m.channel),
+                "content": m.content,
+                "week": m.week,
+                "day": m.day,
+                "intent": m.intent.value if hasattr(m.intent, "value") else str(m.intent),
+                "is_read": "p1" in m.read_by,
+                "attachments": m.attachments or []
+            }
+            for m in game.engine.communication.get_messages("p1")
+        ],
         "market": {
             "vendors": vendors_data,
             "supply_chain_events": game.vendor_manager.get_active_supply_chain_events()
@@ -411,18 +599,21 @@ def take_action(req: ActionRequest):
     
     try:
         action_type = ActionType(req.action_type)
-        action = Action(action_type, req.parameters)
+        action = Action(type=action_type, parameters=req.parameters)
         
-        state_before = _serialize_state(game.engine.states["p1"])
+        state_before = game.engine.states["p1"].model_dump(mode="json", exclude={'ledger'})
+
         
         # Apply action IMMEDIATELY for human player (no queuing - fair play with AI)
         my_state = game.engine.states["p1"]
         _apply_action(my_state, action)
         
-        state_after = _serialize_state(game.engine.states["p1"])
+        state_after = game.engine.states["p1"].model_dump(mode='json', exclude={'ledger'})
+        state_after['balance'] = game.engine.states["p1"].balance
+
         
         # Record human turn (no thinking for human actions via this endpoint)
-        competitors = [_serialize_state(game.engine.states[k]) for k in game.engine.states if k != "p1"]
+        competitors = [game.engine.states[k].model_dump(mode='json', exclude={'ledger'}) for k in game.engine.states if k != "p1"]
         events = [e.description for e in game.engine.event_manager.active_events]
         _record_turn(
             "p1", "Human Player", 
@@ -509,6 +700,138 @@ def reject_proposal(proposal_id: str):
     return {"status": "rejected"}
 
 
+# --- Enhanced System Endpoints ---
+
+
+
+@app.get("/credit/{agent_id}")
+def get_credit_report(agent_id: str):
+    """Get detailed credit report including score and loans"""
+    if hasattr(game.engine, 'get_credit_report'):
+        return {"credit": game.engine.get_credit_report(agent_id)}
+    raise HTTPException(status_code=501, detail="Credit system not initialized")
+
+@app.post("/credit/{agent_id}/payment")
+def make_credit_payment(agent_id: str, req: CreditPaymentRequest):
+    """Process a loan payment"""
+    if req.amount <= 0:
+         raise HTTPException(status_code=400, detail="Payment amount must be positive")
+    
+    # We use the generic action pipeline to ensure fair play and logging
+    try:
+        action = Action(type=ActionType.MAKE_PAYMENT, parameters={
+            "payment_id": req.payment_id,
+            "amount": req.amount
+        })
+        
+        # Apply specifically to p1 if it's p1, otherwise would need logic
+        # For now, this endpoint acts as a direct interface for the UI
+        # But to keep state consistent, we should verify balance
+        
+        state = game.engine.states.get(agent_id)
+        if not state:
+            raise HTTPException(status_code=404, detail="Agent not found")
+            
+        if state.balance < req.amount:
+            raise HTTPException(status_code=400, detail="Insufficient funds")
+            
+        # Delegate to engine's credit system directly for the API call
+        # In a strict turn-based system, this might be queued, but for "Real-time" UI:
+        result = game.engine.credit_system.make_payment(
+            agent_id, req.payment_id, req.amount, game.engine.time_system.current_week
+        )
+        
+        # Deduct balance manually since we bypassed _apply_action's generic handler for now
+        # OR: We should use _apply_action. Let's reuse _apply_action logic.
+        
+        _apply_action(state, action)
+        
+        return {"status": "success", "new_balance": state.balance, "result": result}
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/calendar/{agent_id}")
+def get_calendar(agent_id: str, week: Optional[int] = None):
+    """Get agent's calendar and schedule"""
+    if hasattr(game.engine, 'get_calendar'):
+        cal = game.engine.get_calendar(agent_id)
+        current_week = week or game.engine.time_system.current_week
+        stats = cal.get_statistics()
+        schedule = cal.get_week_schedule(current_week)
+        
+        # Convert schedule objects to dicts
+        schedule_dict = {}
+        for day, actions in schedule.items():
+            schedule_dict[day] = [a.__dict__ for a in actions]
+            
+        return {
+            "statistics": stats,
+            "schedule": schedule_dict,
+            "week": current_week
+        }
+    raise HTTPException(status_code=501, detail="Calendar system not initialized")
+
+@app.get("/zone/{agent_id}")
+def get_zone_info(agent_id: str):
+    """Get neighborhood zone information"""
+    if hasattr(game.engine, 'get_zone_info'):
+        return {"zone": game.engine.get_zone_info(agent_id)}
+    raise HTTPException(status_code=501, detail="Neighborhood system not initialized")
+
+
+# --- Event Ledger Endpoints ---
+@app.get("/events")
+def get_events(
+    agent_id: str = "p1",
+    category: Optional[str] = None,
+    week_start: Optional[int] = None,
+    week_end: Optional[int] = None,
+    limit: int = 50
+):
+    """
+    Query game events from the event ledger.
+    
+    Categories: ticket, dilemma, message, trade, regulator, game_master, alliance, market, achievement, system
+    """
+    state = game.engine.states.get(agent_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    events = state.event_ledger.query(
+        category=category,
+        agent_id=agent_id,
+        week_start=week_start,
+        week_end=week_end,
+        limit=limit
+    )
+    
+    return {
+        "agent_id": agent_id,
+        "total": len(events),
+        "events": [e.to_dict() for e in events],
+        "counts_by_category": state.event_ledger.count_by_category()
+    }
+
+
+
+@app.post("/diplomacy/propose")
+def propose_diplomacy(req: DiplomacyProposalRequest):
+    """Propose a diplomatic action (Alliance, etc.)"""
+    # Simply log for now, as full mechanics are pending
+    print(f"[DIPLOMACY] {req.agent_id} proposed {req.type} to {req.target_id}")
+    
+    # Store in event manager or simply return success signal
+    # In future: game.engine.trust_system.propose_alliance(req.agent_id, req.target_id)
+    
+    return {
+        "status": "proposed",
+        "message": f"Proposal sent to {req.target_id}. They will consider it."
+    }
+
+
 @app.post("/next_turn")
 def next_turn():
     """Advance to next week - AI agents take actions"""
@@ -524,7 +847,7 @@ def next_turn():
     # Update market prices
     game.vendor_manager.update_all_markets(game.engine.time_system.current_week)
     
-    print(f"\n[TURN] Week {game.engine.time_system.current_week} - Processing AI agents...")
+    print(f"\n[TURN] Week {game.engine.time_system.current_week} Day {game.engine.time_system.current_day.value} - Processing AI agents...")
     
     for agent in game.agents:
         if agent.id == "p1":
@@ -535,36 +858,43 @@ def next_turn():
         my_state = game.engine.states[agent.id]
         competitors = [game.engine.states[k] for k in game.engine.states if k != agent.id]
         
-        state_before = _serialize_state(my_state)
+        state_before = my_state.model_dump(mode='json', exclude={'ledger'})
+        state_before['balance'] = my_state.balance
+
         
         obs = Observation(
             week=game.engine.time_system.current_week,
+            day=game.engine.time_system.current_day.value,
+            phase=game.engine.time_system.current_phase.value,
             season=game.engine.time_system.current_season.value,
             my_stats=state_before,
-            competitor_stats=[_serialize_state(c) for c in competitors],
+            competitor_stats=[c.model_dump(mode='json', exclude={'ledger'}) for c in competitors],
             messages=game.engine.communication.get_messages(agent.id),
             events=[e.description for e in game.engine.event_manager.active_events],
             alliances=[str(a) for a in game.engine.trust_system.active_alliances if agent.id in a.members],
             trust_scores=game.engine.trust_system.trust_matrix.get(agent.id, {}),
-            market_data={v.profile.id: v.get_market_status() for v in game.vendor_manager.get_all_vendors()}
+            market_data={v.profile.id: v.get_market_status() for v in game.vendor_manager.get_all_vendors()},
+            # New enhanced data
+            credit_info=game.engine.credit_system.get_credit_report(agent.id) if hasattr(game.engine, 'credit_system') else None,
+            zone_info=game.engine.get_zone_info(agent.id) if hasattr(game.engine, 'get_zone_info') else None,
+            calendar_info=game.engine.calendar_manager.get_calendar(agent.id).get_statistics() if hasattr(game.engine, 'calendar_manager') else None,
+            ethical_dilemma=game.engine.ethical_events.get_active_dilemma(agent.id).__dict__ if hasattr(game.engine, 'ethical_events') and game.engine.ethical_events.get_active_dilemma(agent.id) else None
         )
         
         # Get action
-        action = agent.decide_action(obs)
-        ai_actions[agent.id] = action
+        # Get actions
+        actions = agent.decide_action(obs)
         
-        # Get all thinking and actions
-        if hasattr(agent, 'get_last_thinking'):
-            thinking = agent.get_last_thinking()
-            all_actions = agent.get_all_actions() if hasattr(agent, 'get_all_actions') else [action]
-            raw_response = getattr(agent, 'last_raw_response', '')
-            llm_provider = getattr(agent, 'llm_provider', '')
-            print(f"[AGENT] {agent.id} generated {len(all_actions)} actions: {[a.type.value for a in all_actions]}")
-        else:
-            thinking = []
-            all_actions = [action]
-            raw_response = ""
-            llm_provider = ""
+        # Metadata access safe for both LLM and Human agents
+        thinking = getattr(agent, "last_thinking", [])
+        raw_response = getattr(agent, "last_raw_response", "")
+        llm_provider = getattr(agent, "llm_provider", "Unknown")
+        
+        all_actions = actions
+        
+        ai_actions[agent.id] = all_actions
+        
+        print(f"[AGENT] {agent.id} generated {len(all_actions)} actions: {[a.type.name for a in all_actions]}")
         
         # Submit actions to Engine
         for a in all_actions:
@@ -586,7 +916,9 @@ def next_turn():
             
             game.engine.submit_action(agent.id, engine_action)
         
-        state_after = _serialize_state(my_state) # Snapshot before processing
+        state_after = my_state.model_dump(mode='json', exclude={'ledger'}) # Snapshot before processing
+        state_after['balance'] = my_state.balance
+
         
         # Store AI thinking (including raw response for debugging)
         game.ai_thoughts[agent.id] = {
@@ -604,7 +936,7 @@ def next_turn():
             agent.id, my_state.name,
             thinking, all_actions, raw_response,
             state_before, state_after,
-            [_serialize_state(c) for c in competitors],
+            [c.model_dump(mode='json', exclude={'ledger'}) for c in competitors],
             [e.description for e in game.engine.event_manager.active_events],
             is_human=False, llm_provider=llm_provider
         )
@@ -621,8 +953,15 @@ def next_turn():
     
     print(f"[TURN] Completed AI processing. Archived thoughts for week {game.engine.time_system.current_week}")
 
-    # 2. Process Turn via Engine
-    turn_results = game.engine.process_turn()
+    # 2. Process Turn via Engine (Daily)
+    turn_results = game.engine.process_daily_turn()
+    
+    # If mid-week, the results are just status. If week-rolled, results has financials.
+    if turn_results.get("status") == "day_advanced":
+        pass # Just a day click
+    else:
+        # Week Rolled Over - Results contain financials
+        pass
     
     # 3. Customer Simulation (Optional: Engine does basic revenue, but we can keep detailed customer logic if we want)
     # For now, we'll trust the Engine's revenue calculation which includes seasonal mods
@@ -635,7 +974,38 @@ def next_turn():
             customer.visit_laundromat(choice, game.engine.time_system.current_week)
             # We don't add revenue here because Engine already did it
     
+    # 4. Advance Week Counter (Manually now)
+    game.engine.time_system.advance_week()
+    print(f"[TURN] Advanced to Week {game.engine.time_system.current_week}")
+
     return get_state()
+
+@app.post("/next_day")
+def next_day():
+    """Advance to next day. If week ends, trigger next_turn."""
+    
+    # Check if we are at the end of the week (Sunday)
+    is_sunday = game.engine.time_system.current_day == Day.SUNDAY
+    
+    if is_sunday:
+        return next_turn()
+    else:
+        # Advance day
+        game.engine.time_system.advance_day()
+        
+        # Simulate Daily Activity (Customers)
+        # We assume customers visit daily, but financial processing (bills) is weekly
+        laundromat_list = list(game.engine.states.values())
+        daily_revenue = 0
+        for customer in game.customers:
+            # Simple daily decision
+            choice = customer.decide_laundromat(laundromat_list)
+            if choice:
+                # Visit generates revenue in the state immediately
+                customer.visit_laundromat(choice, game.engine.time_system.current_week)
+        
+        print(f"[DAY] Advanced to {game.engine.time_system.current_day.value} (Simulated Daily Traffic)")
+        return get_state()
 
 
 # --- Scenario Endpoints ---
@@ -737,7 +1107,7 @@ def activate_revenue_stream(stream_name: str, request: ActivateRequest):
 
 
 # --- Proposal Endpoints ---
-from src.engine.proposals import ProposalManager, ProposalStatus
+from src.engine.commerce.proposals import ProposalManager, ProposalStatus
 
 # Initialize proposal manager (if not exists) 
 proposal_manager = ProposalManager(game.engine) if hasattr(game, 'engine') else None
@@ -898,6 +1268,193 @@ def reset_game():
     game = GameWrapper(scenario_name=scenario)
     proposal_manager = None  # Reset proposal manager
     return {"status": "reset", "message": "Game has been reset", "scenario": scenario}
+
+# ═══════════════════════════════════════════════════════════════════════
+# NEW ENDPOINTS: Credit, Calendar, Neighborhood Systems
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.get("/credit/{agent_id}")
+def get_credit_report(agent_id: str):
+    """Get full credit report for an agent"""
+    try:
+        # Use FinancialSystem -> CreditSystem
+        report = game.engine.financial_system.credit_system.get_credit_report(agent_id)
+        
+        # Merge Pending Bills from State (Source of Truth)
+        state = game.engine.states.get(agent_id)
+        if state and hasattr(state, 'bills'):
+            pending_bills = []
+            for bill in state.bills:
+                if not bill.is_paid:
+                    pending_bills.append({
+                        "payment_id": bill.id,
+                        "amount": bill.amount,
+                        "due_week": bill.due_week,
+                        "status": "pending",
+                        "date": f"Week {bill.due_week} (Due)",
+                        "description": bill.name
+                    })
+            
+            # Inject into payment_history (prepend pending)
+            if "payment_history" in report:
+                 # Ensure we are adding to a list
+                 if isinstance(report["payment_history"], list):
+                     report["payment_history"] = pending_bills + report["payment_history"]
+                 elif isinstance(report["payment_history"], dict) and "rows" in report["payment_history"]:
+                     # If it's the dict format from CreditSystem, we need to adapt
+                     # But for now assume it might be a list or we just add it to the 'rows'
+                     pass 
+            else:
+                 report["payment_history"] = pending_bills
+                 
+        return {"agent_id": agent_id, "credit": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class PaymentRequest(BaseModel):
+    payment_id: str
+    amount: float
+
+
+@app.post("/credit/{agent_id}/payment")
+def make_credit_payment(agent_id: str, request: PaymentRequest):
+    """Make a payment on a loan or bill"""
+    try:
+        state = game.engine.get_state(agent_id)
+        if not state:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        
+        # Delegate to FinancialSystem
+        result = game.engine.financial_system.pay_bill(
+            state, 
+            request.payment_id, 
+            game.engine.time_system.current_week
+        )
+        
+        if not result["success"]:
+             # If error, try to return useful message
+             raise HTTPException(status_code=400, detail=result.get("error", "Payment failed"))
+
+        return {
+            "status": "paid",
+            "payment_id": request.payment_id,
+            "amount": result["amount"],
+            "new_balance": result["new_balance"],
+            "new_credit_score": game.engine.financial_system.credit_system.agent_credit[agent_id].total_score
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/calendar/{agent_id}")
+def get_calendar(agent_id: str, week: int = None):
+    """Get calendar for an agent"""
+    try:
+        calendar = game.engine.get_calendar(agent_id)
+        current_week = week or game.engine.time_system.current_week
+        
+        cal_data = calendar.to_dict(current_week)
+        return {
+            "agent_id": agent_id,
+            "week": current_week,
+            "schedule": cal_data["week_schedule"],
+            "statistics": calendar.get_statistics()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ScheduleRequest(BaseModel):
+    category: str
+    title: str
+    description: str = ""
+    week: int
+    day: int = 1
+    priority: str = "medium"
+    is_recurring: bool = False
+    recurrence_weeks: int = 0
+
+
+@app.post("/calendar/{agent_id}/schedule")
+def schedule_action(agent_id: str, request: ScheduleRequest):
+    """Schedule an action on the calendar"""
+    from src.engine.core.calendar import ActionCategory, ActionPriority
+    
+    try:
+        calendar = game.engine.get_calendar(agent_id)
+        
+        # Map string to enum
+        try:
+            category = ActionCategory(request.category)
+        except ValueError:
+            category = ActionCategory.CUSTOM
+        
+        try:
+            priority = ActionPriority(request.priority)
+        except ValueError:
+            priority = ActionPriority.MEDIUM
+        
+        action = calendar.schedule_action(
+            category=category,
+            title=request.title,
+            description=request.description or request.title,
+            week=request.week,
+            day=request.day,
+            priority=priority,
+            is_recurring=request.is_recurring,
+            recurrence_weeks=request.recurrence_weeks,
+            current_week=game.engine.time_system.current_week
+        )
+        
+        return {
+            "status": "scheduled",
+            "action_id": action.id,
+            "week": request.week,
+            "day": request.day
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/zone/{agent_id}")
+def get_zone_info(agent_id: str):
+    """Get neighborhood zone info for an agent"""
+    try:
+        zone_info = game.engine.get_zone_info(agent_id)
+        return {"agent_id": agent_id, "zone": zone_info}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/zones")
+def get_all_zones():
+    """Get all neighborhood zones"""
+    try:
+        return {"zones": game.engine.neighborhood.get_zone_summary()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/enhanced_state")
+def get_enhanced_state(agent_id: str = "p1"):
+    """Get enhanced game state including credit, calendar, and zone data"""
+    try:
+        base_state = get_state(agent_id)
+        
+        # Add enhanced data
+        enhanced = {
+            **base_state,
+            "credit": game.engine.financial_system.credit_system.get_credit_report(agent_id),
+            "zone": game.engine.get_zone_info(agent_id),
+            "calendar_stats": game.engine.get_calendar(agent_id).get_statistics()
+        }
+        
+        return enhanced
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

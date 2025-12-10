@@ -6,10 +6,10 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 
 from src.benchmark.scenarios import Scenario, get_scenario
-from src.engine.time import TimeSystem
-from src.engine.customer import Customer
-from src.engine.events import EventManager
-from src.engine.vendor import Vendor
+from src.engine.core.time import TimeSystem
+from src.engine.population.customer import Customer
+from src.engine.core.events import EventManager
+from src.engine.commerce.vendor import Vendor
 from src.world.laundromat import LaundromatState, Machine
 from src.world.ticket import TicketStatus
 from src.agents.base_agent import BaseAgent, Observation, ActionType

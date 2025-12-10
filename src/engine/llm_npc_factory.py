@@ -4,9 +4,9 @@ Provides consistent configuration and easy toggling between LLM and rule-based N
 """
 import os
 from typing import List, Union
-from src.engine.customer import Customer, LLMCustomer
-from src.engine.vendor import VendorManager
-from src.engine.events import EventManager
+from src.engine.population.customer import Customer, LLMCustomer
+from src.engine.commerce.vendor import VendorManager
+from src.engine.core.events import EventManager
 
 
 class NPCFactory:

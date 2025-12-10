@@ -1,0 +1,615 @@
+# [ ]↔T: Credit & FICO Score System
+#   - [x] CreditScore dataclass with FICO-like calculation
+#   - [x] SBA Loan starting condition
+#   - [x] Payment history tracking
+#   - [x] Credit utilization tracking
+#   - [x] Score impact on loan terms
+# PRIORITY: P1 - Critical for financial realism
+# STATUS: Complete
+
+"""
+Credit & FICO Score System
+
+Implements a credit scoring system similar to FICO for the laundromat simulation.
+Agents start with an SBA loan and must build credit through:
+- Timely payments (35% weight)
+- Credit utilization (30% weight)
+- Length of credit history (15% weight)
+- Credit mix (10% weight)
+- New credit inquiries (10% weight)
+
+This adds a financial responsibility dimension to LLM evaluation.
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Any, Optional
+from enum import Enum
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class PaymentStatus(Enum):
+    """Status of a payment."""
+    ON_TIME = "on_time"
+    LATE_30 = "late_30"      # 30 days late
+    LATE_60 = "late_60"      # 60 days late
+    LATE_90 = "late_90"      # 90+ days late
+    MISSED = "missed"
+    SCHEDULED = "scheduled"
+
+
+class CreditRating(Enum):
+    """Credit rating tiers."""
+    EXCEPTIONAL = "exceptional"  # 800-850
+    VERY_GOOD = "very_good"      # 740-799
+    GOOD = "good"                # 670-739
+    FAIR = "fair"                # 580-669
+    POOR = "poor"                # 300-579
+
+
+@dataclass
+class PaymentRecord:
+    """Record of a single payment."""
+    id: str
+    loan_id: str
+    amount_due: float
+    amount_paid: float
+    due_week: int
+    paid_week: Optional[int]
+    status: PaymentStatus
+    
+    @property
+    def is_paid(self) -> bool:
+        return self.status in [PaymentStatus.ON_TIME, PaymentStatus.LATE_30]
+    
+    @property
+    def days_late(self) -> int:
+        if self.paid_week is None:
+            return 999  # Unpaid
+        weeks_late = self.paid_week - self.due_week
+        return max(0, weeks_late * 7)
+
+
+@dataclass
+class CreditAccount:
+    """A credit account (loan, line of credit, etc.)."""
+    id: str
+    account_type: str  # sba_loan, equipment_loan, credit_line, vendor_credit
+    original_amount: float
+    current_balance: float
+    credit_limit: float  # For credit lines
+    interest_rate: float
+    weekly_payment: float
+    opened_week: int
+    term_weeks: int
+    payments: List[PaymentRecord] = field(default_factory=list)
+    is_active: bool = True
+    is_defaulted: bool = False
+
+
+@dataclass
+class CreditScore:
+    """
+    Credit score calculation following FICO-like methodology.
+    
+    Score Range: 300-850
+    
+    Components:
+    - Payment History (35%): On-time payments, late payments, defaults
+    - Credit Utilization (30%): Amount owed vs credit limits
+    - Credit History Length (15%): How long accounts have been open
+    - Credit Mix (10%): Variety of account types
+    - New Credit (10%): Recent inquiries and new accounts
+    """
+    
+    # Component scores (0-100 each)
+    payment_history_score: float = 70.0
+    utilization_score: float = 80.0
+    history_length_score: float = 50.0
+    credit_mix_score: float = 60.0
+    new_credit_score: float = 70.0
+    
+    # Weights (FICO standard)
+    WEIGHTS = {
+        "payment_history": 0.35,
+        "utilization": 0.30,
+        "history_length": 0.15,
+        "credit_mix": 0.10,
+        "new_credit": 0.10
+    }
+    
+    @property
+    def total_score(self) -> int:
+        """Calculate the overall credit score (300-850 range)."""
+        weighted_score = (
+            self.payment_history_score * self.WEIGHTS["payment_history"] +
+            self.utilization_score * self.WEIGHTS["utilization"] +
+            self.history_length_score * self.WEIGHTS["history_length"] +
+            self.credit_mix_score * self.WEIGHTS["credit_mix"] +
+            self.new_credit_score * self.WEIGHTS["new_credit"]
+        )
+        # Map 0-100 to 300-850
+        return int(300 + (weighted_score / 100) * 550)
+    
+    @property
+    def rating(self) -> CreditRating:
+        """Get the credit rating tier."""
+        score = self.total_score
+        if score >= 800:
+            return CreditRating.EXCEPTIONAL
+        elif score >= 740:
+            return CreditRating.VERY_GOOD
+        elif score >= 670:
+            return CreditRating.GOOD
+        elif score >= 580:
+            return CreditRating.FAIR
+        else:
+            return CreditRating.POOR
+
+
+class CreditSystem:
+    """
+    Manages credit scoring and loan systems for all agents.
+    
+    Key features:
+    - SBA loan starting condition
+    - Dynamic credit score updates
+    - Payment scheduling and tracking
+    - Credit-based loan terms
+    """
+    
+    def __init__(self):
+        self.agent_credit: Dict[str, CreditScore] = {}
+        self.agent_accounts: Dict[str, List[CreditAccount]] = {}
+        self.scheduled_payments: Dict[str, List[PaymentRecord]] = {}
+        self.credit_inquiries: Dict[str, List[int]] = {}  # agent_id -> list of weeks
+    
+    def initialize_agent(self, agent_id: str, starting_week: int = 1) -> Dict[str, Any]:
+        """
+        Initialize an agent with SBA loan starting condition.
+        
+        Instead of starting with $2,500 cash, agents start with:
+        - $5,000 SBA loan
+        - Initial credit score of 650 (Fair)
+        - Weekly payment schedule
+        """
+        # Create initial credit score (Fair range - new business)
+        self.agent_credit[agent_id] = CreditScore(
+            payment_history_score=70.0,  # No history yet
+            utilization_score=50.0,       # High utilization from loan
+            history_length_score=30.0,    # New credit
+            credit_mix_score=50.0,        # Single account
+            new_credit_score=60.0         # Recent inquiry
+        )
+        
+        # Create SBA loan
+        sba_loan = CreditAccount(
+            id=f"sba_{agent_id}",
+            account_type="sba_loan",
+            original_amount=5000.0,
+            current_balance=5000.0,
+            credit_limit=5000.0,
+            interest_rate=0.06,  # 6% APR (favorable SBA rate)
+            weekly_payment=self._calculate_weekly_payment(5000.0, 0.06, 52),
+            opened_week=starting_week,
+            term_weeks=52  # 1 year term
+        )
+        
+        self.agent_accounts[agent_id] = [sba_loan]
+        self.scheduled_payments[agent_id] = []
+        self.credit_inquiries[agent_id] = [starting_week]
+        
+        # Schedule all SBA payments
+        self._schedule_loan_payments(agent_id, sba_loan)
+        
+        logger.info(f"Initialized credit for {agent_id}: SBA Loan $5000, Score {self.agent_credit[agent_id].total_score}")
+        
+        return {
+            "sba_loan_amount": 5000.0,
+            "weekly_payment": sba_loan.weekly_payment,
+            "initial_credit_score": self.agent_credit[agent_id].total_score,
+            "first_payment_due_week": starting_week + 1
+        }
+    
+    def _calculate_weekly_payment(self, principal: float, annual_rate: float, term_weeks: int) -> float:
+        """Calculate weekly payment for an amortizing loan."""
+        weekly_rate = annual_rate / 52
+        if weekly_rate == 0:
+            return principal / term_weeks
+        
+        # Standard amortization formula
+        payment = principal * (weekly_rate * (1 + weekly_rate)**term_weeks) / ((1 + weekly_rate)**term_weeks - 1)
+        return round(payment, 2)
+    
+    def _schedule_loan_payments(self, agent_id: str, account: CreditAccount):
+        """Schedule all payments for a loan."""
+        import uuid
+        
+        for week_offset in range(1, account.term_weeks + 1):
+            due_week = account.opened_week + week_offset
+            payment = PaymentRecord(
+                id=str(uuid.uuid4())[:8],
+                loan_id=account.id,
+                amount_due=account.weekly_payment,
+                amount_paid=0.0,
+                due_week=due_week,
+                paid_week=None,
+                status=PaymentStatus.SCHEDULED
+            )
+            self.scheduled_payments[agent_id].append(payment)
+    
+    def get_due_payments(self, agent_id: str, current_week: int) -> List[PaymentRecord]:
+        """Get payments due this week or overdue."""
+        payments = self.scheduled_payments.get(agent_id, [])
+        due = [p for p in payments if p.due_week <= current_week and p.status == PaymentStatus.SCHEDULED]
+        return due
+    
+    def make_payment(
+        self,
+        agent_id: str,
+        payment_id: str,
+        amount: float,
+        current_week: int
+    ) -> Dict[str, Any]:
+        """
+        Process a payment.
+        
+        Returns payment result with credit score impact.
+        """
+        payments = self.scheduled_payments.get(agent_id, [])
+        payment = next((p for p in payments if p.id == payment_id), None)
+        
+        if not payment:
+            return {"error": "Payment not found"}
+        
+        if payment.status != PaymentStatus.SCHEDULED:
+            return {"error": "Payment already processed"}
+        
+        # Determine payment status
+        weeks_late = current_week - payment.due_week
+        
+        if weeks_late <= 0:
+            status = PaymentStatus.ON_TIME
+            credit_impact = 2.0  # Positive impact for on-time
+        elif weeks_late <= 4:  # ~30 days
+            status = PaymentStatus.LATE_30
+            credit_impact = -5.0
+        elif weeks_late <= 8:  # ~60 days
+            status = PaymentStatus.LATE_60
+            credit_impact = -15.0
+        else:
+            status = PaymentStatus.LATE_90
+            credit_impact = -30.0
+        
+        # Update payment record
+        payment.amount_paid = amount
+        payment.paid_week = current_week
+        payment.status = status
+        
+        # Update account balance
+        accounts = self.agent_accounts.get(agent_id, [])
+        for account in accounts:
+            if account.id == payment.loan_id:
+                # Apply payment to principal (simplified - interest already factored into payment)
+                principal_portion = amount * 0.85  # Rough estimate
+                account.current_balance = max(0, account.current_balance - principal_portion)
+                break
+        
+        # Update credit score
+        self._update_credit_score(agent_id, credit_impact, "payment_history")
+        
+        # Also update utilization based on new balance
+        self._recalculate_utilization(agent_id)
+        
+        new_score = self.agent_credit[agent_id].total_score
+        
+        logger.info(f"Agent {agent_id} made payment {payment_id}: ${amount}, Status: {status.value}, New Score: {new_score}")
+        
+        return {
+            "success": True,
+            "payment_status": status.value,
+            "weeks_late": max(0, weeks_late),
+            "credit_impact": credit_impact,
+            "new_credit_score": new_score,
+            "remaining_balance": sum(a.current_balance for a in accounts)
+        }
+    
+    def mark_missed_payment(self, agent_id: str, payment_id: str, current_week: int) -> Dict[str, Any]:
+        """Mark a payment as missed (called when deadline passes without payment)."""
+        payments = self.scheduled_payments.get(agent_id, [])
+        payment = next((p for p in payments if p.id == payment_id), None)
+        
+        if not payment:
+            return {"error": "Payment not found"}
+        
+        weeks_late = current_week - payment.due_week
+        
+        if weeks_late <= 4:
+            payment.status = PaymentStatus.LATE_30
+            credit_impact = -10.0
+        elif weeks_late <= 8:
+            payment.status = PaymentStatus.LATE_60
+            credit_impact = -25.0
+        else:
+            payment.status = PaymentStatus.LATE_90
+            credit_impact = -40.0
+        
+        # Update credit score
+        self._update_credit_score(agent_id, credit_impact, "payment_history")
+        
+        # Check for default (90+ days late)
+        if payment.status == PaymentStatus.LATE_90:
+            self._check_default(agent_id, payment.loan_id)
+        
+        return {
+            "status": payment.status.value,
+            "credit_impact": credit_impact,
+            "new_score": self.agent_credit[agent_id].total_score
+        }
+    
+    def _update_credit_score(self, agent_id: str, impact: float, component: str):
+        """Update a specific component of credit score."""
+        credit = self.agent_credit.get(agent_id)
+        if not credit:
+            return
+        
+        if component == "payment_history":
+            credit.payment_history_score = max(0, min(100, credit.payment_history_score + impact))
+        elif component == "utilization":
+            credit.utilization_score = max(0, min(100, credit.utilization_score + impact))
+        elif component == "history_length":
+            credit.history_length_score = max(0, min(100, credit.history_length_score + impact))
+        elif component == "credit_mix":
+            credit.credit_mix_score = max(0, min(100, credit.credit_mix_score + impact))
+        elif component == "new_credit":
+            credit.new_credit_score = max(0, min(100, credit.new_credit_score + impact))
+    
+    def _recalculate_utilization(self, agent_id: str):
+        """Recalculate utilization score based on current balances."""
+        accounts = self.agent_accounts.get(agent_id, [])
+        if not accounts:
+            return
+        
+        total_balance = sum(a.current_balance for a in accounts)
+        total_limit = sum(a.credit_limit for a in accounts)
+        
+        if total_limit == 0:
+            utilization_ratio = 0
+        else:
+            utilization_ratio = total_balance / total_limit
+        
+        # Lower utilization = higher score
+        # 0-10%: 100, 10-30%: 80, 30-50%: 60, 50-75%: 40, 75%+: 20
+        if utilization_ratio <= 0.10:
+            score = 100
+        elif utilization_ratio <= 0.30:
+            score = 80
+        elif utilization_ratio <= 0.50:
+            score = 60
+        elif utilization_ratio <= 0.75:
+            score = 40
+        else:
+            score = 20
+        
+        self.agent_credit[agent_id].utilization_score = score
+    
+    def _check_default(self, agent_id: str, loan_id: str):
+        """Check if loan should be marked as defaulted."""
+        accounts = self.agent_accounts.get(agent_id, [])
+        for account in accounts:
+            if account.id == loan_id:
+                account.is_defaulted = True
+                # Major credit hit for default
+                self._update_credit_score(agent_id, -50.0, "payment_history")
+                logger.warning(f"Agent {agent_id} defaulted on loan {loan_id}")
+                break
+    
+    def update_history_length(self, agent_id: str, current_week: int):
+        """Update credit history length score (call weekly)."""
+        accounts = self.agent_accounts.get(agent_id, [])
+        if not accounts:
+            return
+        
+        oldest_account = min(accounts, key=lambda a: a.opened_week)
+        weeks_of_history = current_week - oldest_account.opened_week
+        
+        # Score improves gradually with history
+        # 0-12 weeks: 30-50, 12-24 weeks: 50-70, 24+ weeks: 70-90
+        if weeks_of_history < 12:
+            score = 30 + (weeks_of_history / 12) * 20
+        elif weeks_of_history < 24:
+            score = 50 + ((weeks_of_history - 12) / 12) * 20
+        else:
+            score = min(90, 70 + ((weeks_of_history - 24) / 24) * 20)
+        
+        self.agent_credit[agent_id].history_length_score = score
+    
+    def apply_for_loan(
+        self,
+        agent_id: str,
+        loan_type: str,
+        amount: float,
+        current_week: int
+    ) -> Dict[str, Any]:
+        """
+        Apply for a new loan. Terms depend on credit score.
+        
+        Returns approval status and terms.
+        """
+        credit = self.agent_credit.get(agent_id)
+        if not credit:
+            return {"approved": False, "reason": "No credit history"}
+        
+        score = credit.total_score
+        
+        # Record inquiry (impacts new credit score)
+        self.credit_inquiries[agent_id].append(current_week)
+        self._update_credit_score(agent_id, -3.0, "new_credit")
+        
+        # Loan type requirements and terms
+        loan_configs = {
+            "operating_credit": {
+                "min_score": 580,
+                "max_amount": 5000,
+                "base_rate": 0.08,
+                "term_weeks": 26
+            },
+            "equipment_loan": {
+                "min_score": 620,
+                "max_amount": 15000,
+                "base_rate": 0.07,
+                "term_weeks": 52
+            },
+            "expansion_loan": {
+                "min_score": 700,
+                "max_amount": 30000,
+                "base_rate": 0.06,
+                "term_weeks": 104
+            },
+            "emergency_loan": {
+                "min_score": 500,
+                "max_amount": 2000,
+                "base_rate": 0.15,
+                "term_weeks": 12
+            }
+        }
+        
+        config = loan_configs.get(loan_type)
+        if not config:
+            return {"approved": False, "reason": f"Unknown loan type: {loan_type}"}
+        
+        # Check minimum score
+        if score < config["min_score"]:
+            return {
+                "approved": False,
+                "reason": f"Credit score {score} below minimum {config['min_score']}",
+                "current_score": score
+            }
+        
+        # Check maximum amount
+        if amount > config["max_amount"]:
+            return {
+                "approved": False,
+                "reason": f"Amount ${amount} exceeds maximum ${config['max_amount']}",
+                "max_available": config["max_amount"]
+            }
+        
+        # Calculate rate based on credit score
+        # Better score = lower rate
+        rate_adjustment = (850 - score) / 850 * 0.05  # Up to 5% additional
+        final_rate = config["base_rate"] + rate_adjustment
+        
+        # Create the loan
+        import uuid
+        loan = CreditAccount(
+            id=str(uuid.uuid4())[:8],
+            account_type=loan_type,
+            original_amount=amount,
+            current_balance=amount,
+            credit_limit=amount,
+            interest_rate=final_rate,
+            weekly_payment=self._calculate_weekly_payment(amount, final_rate, config["term_weeks"]),
+            opened_week=current_week,
+            term_weeks=config["term_weeks"]
+        )
+        
+        self.agent_accounts[agent_id].append(loan)
+        self._schedule_loan_payments(agent_id, loan)
+        
+        # Update credit mix if new type
+        existing_types = set(a.account_type for a in self.agent_accounts[agent_id])
+        if len(existing_types) > 1:
+            self._update_credit_score(agent_id, 5.0, "credit_mix")
+        
+        # Update utilization
+        self._recalculate_utilization(agent_id)
+        
+        logger.info(f"Approved {loan_type} for {agent_id}: ${amount} at {final_rate:.2%}")
+        
+        return {
+            "approved": True,
+            "loan_id": loan.id,
+            "amount": amount,
+            "interest_rate": round(final_rate, 4),
+            "weekly_payment": loan.weekly_payment,
+            "term_weeks": config["term_weeks"],
+            "first_payment_week": current_week + 1,
+            "new_credit_score": self.agent_credit[agent_id].total_score
+        }
+    
+    def get_credit_report(self, agent_id: str) -> Dict[str, Any]:
+        """Get a full credit report for an agent."""
+        credit = self.agent_credit.get(agent_id)
+        accounts = self.agent_accounts.get(agent_id, [])
+        payments = self.scheduled_payments.get(agent_id, [])
+        
+        if not credit:
+            return {"error": "No credit history"}
+        
+        # Payment history summary
+        paid_payments = [p for p in payments if p.status != PaymentStatus.SCHEDULED]
+        on_time = sum(1 for p in paid_payments if p.status == PaymentStatus.ON_TIME)
+        late = sum(1 for p in paid_payments if p.status in [PaymentStatus.LATE_30, PaymentStatus.LATE_60, PaymentStatus.LATE_90])
+        missed = sum(1 for p in paid_payments if p.status == PaymentStatus.MISSED)
+        
+        return {
+            "credit_score": credit.total_score,
+            "rating": credit.rating.value,
+            "score_breakdown": {
+                "payment_history": round(credit.payment_history_score, 1),
+                "utilization": round(credit.utilization_score, 1),
+                "history_length": round(credit.history_length_score, 1),
+                "credit_mix": round(credit.credit_mix_score, 1),
+                "new_credit": round(credit.new_credit_score, 1)
+            },
+            "accounts": [
+                {
+                    "id": a.id,
+                    "type": a.account_type,
+                    "original_amount": a.original_amount,
+                    "current_balance": round(a.current_balance, 2),
+                    "interest_rate": a.interest_rate,
+                    "weekly_payment": a.weekly_payment,
+                    "is_active": a.is_active,
+                    "is_defaulted": a.is_defaulted
+                }
+                for a in accounts
+            ],
+            "payment_history": {
+                "total_payments": len(paid_payments),
+                "on_time": on_time,
+                "late": late,
+                "missed": missed,
+                "on_time_rate": round(on_time / max(len(paid_payments), 1) * 100, 1)
+            },
+            "total_debt": round(sum(a.current_balance for a in accounts), 2),
+            "total_credit_limit": round(sum(a.credit_limit for a in accounts), 2),
+            "utilization_ratio": round(
+                sum(a.current_balance for a in accounts) / max(sum(a.credit_limit for a in accounts), 1) * 100, 1
+            )
+        }
+    
+    def to_dict(self, agent_id: str) -> Dict[str, Any]:
+        """Serialize for API responses."""
+        credit = self.agent_credit.get(agent_id)
+        if not credit:
+            return {"error": "No credit data"}
+        
+        due_payments = self.get_due_payments(agent_id, 999)  # All scheduled
+        next_payments = [p for p in due_payments if p.status == PaymentStatus.SCHEDULED][:3]
+        
+        return {
+            "score": credit.total_score,
+            "rating": credit.rating.value,
+            "next_payments": [
+                {
+                    "id": p.id,
+                    "amount": p.amount_due,
+                    "due_week": p.due_week
+                }
+                for p in next_payments
+            ],
+            "accounts_count": len(self.agent_accounts.get(agent_id, []))
+        }
