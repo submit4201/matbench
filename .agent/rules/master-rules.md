@@ -16,7 +16,7 @@ master rules
 3. Testing - Must be tested with pytest and the tests should be in a .test directory in the root of the project.
     3-A: in the .test directory there should be a directory structure that matches the directory structure of the project
     3-B: all tests should be in a file named test_*.py 
-    3-C: all tests should log they're results to the console and to a file
+    3-C: all tests should log their results to the console and to a file
     3-D: those logs should be housed with the logging system but kept with the test files
     3-E: those logs should follow the same rotation and compression system as the logging system
 
