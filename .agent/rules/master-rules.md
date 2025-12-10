@@ -20,7 +20,7 @@ master rules
     3-D: those logs should be housed with the logging system but kept with the test files
     3-E: those logs should follow the same rotation and compression system as the logging system
 
-4. Comments - should be constistent and easy to read and parse 
+4. Comments - should be consistent and easy to read and parse 
     4-A: use docstrings for functions and classes
     4-B: use comments for logic and flow
     4-C: use comments for debugging
