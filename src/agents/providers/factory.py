@@ -62,8 +62,10 @@ class LLMProviderFactory:
                 return client
             
             elif provider_name == "GEMINI":
-                client = get_gemini_client()
-                print(f"[{agent_name}] ✓ Gemini client initialized")
+                gemini_config = LLMDICT.get("GEMINI", {})
+                model = gemini_config.get("MODEL", "gemini-flash-lite-latest")
+                client = get_gemini_client(model=model)
+                print(f"[{agent_name}] ✓ Gemini client initialized (model: {model})")
                 return client
 
             elif provider_name in ["AZURE", "OPENAI"]:

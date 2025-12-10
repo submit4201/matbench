@@ -49,6 +49,10 @@ FUNCTION_TO_ACTION = {
 FUNCTION_TO_ACTION.update(EXTENDED_FUNCTION_TO_ACTION)
 FUNCTION_TO_ACTION.update(EXTENDED_FUNCTION_TO_ACTION)
 
+from src.utils.logger import get_logger, get_llm_trace_logger
+
+# Existing imports...
+
 class LLMAgent(BaseAgent):
     """AI Agent that uses LLMs with function calling for structured output"""
     
@@ -72,8 +76,12 @@ class LLMAgent(BaseAgent):
         self.deployment = None
         self.llm = None
         
+        # Setup loggers
+        self.logger = get_logger(f"src.agents.{agent_id}")
+        self.trace_logger = get_llm_trace_logger()
+        
         # Setup LLM client using helper packages
-        print(f"[{self.name}] Starting LLM initialization...")
+        self.logger.info(f"[{self.name}] Starting LLM initialization...")
         self._setup_llm(llm_provider)
 
     def _setup_llm(self, llm_name: str):
@@ -125,7 +133,26 @@ class LLMAgent(BaseAgent):
             # Store reasoning if present
             if message.content:
                 self.last_thinking.append(message.content)
-                messages.append(message) # Add assistant thought to history
+            
+            # Append to history if content or tool calls exist
+            if message.content or (hasattr(message, 'tool_calls') and message.tool_calls):
+                # Convert Message object to dict for history
+                msg_dict = {"role": "assistant", "content": message.content}
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    # Convert tool calls to dict format if needed, or pass as is if helper handles it? 
+                    # Helper expects OpenAI format dicts usually. 
+                    # gemini_helper.ToolCall -> needs conversion
+                     msg_dict["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        } for tc in message.tool_calls
+                     ]
+                messages.append(msg_dict) # Add assistant thought to history
                 
             # 4. Parse Actions
             tool_calls = message.tool_calls if hasattr(message, 'tool_calls') and message.tool_calls else []
@@ -168,6 +195,7 @@ class LLMAgent(BaseAgent):
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
+                        "name": func_name,  # Required by Gemini helper
                         "content": f"Action {func_name} queued completely."
                     })
             
@@ -181,9 +209,12 @@ class LLMAgent(BaseAgent):
     def _call_llm_messages(self, messages: List[Dict]):
         """Helper to call LLM with full message history"""
         
-        # Get model params
-        model_name = self.model
-        if hasattr(self.llm, 'deployment_name'): model_name = self.llm.deployment_name
+        # Get model params - prefer client's configured model over self.model default
+        model_name = self.model  # Fallback
+        if hasattr(self.llm, 'model') and self.llm.model:
+            model_name = self.llm.model  # Use model from client (set by factory from config)
+        elif hasattr(self.llm, 'deployment_name') and self.llm.deployment_name:
+            model_name = self.llm.deployment_name  # Azure uses deployment_name
         
         # O-series models (o1, o3) don't support temperature or tools in the same way
         is_o_series = model_name and (
@@ -200,9 +231,27 @@ class LLMAgent(BaseAgent):
             request_params["tools"] = TOOLS
             request_params["temperature"] = 0.7
         
+        # TRACE LOG PROMPT
+        self.trace_logger.debug(f"\n[{self.name}] >>> SENT TO LLM ({model_name}):\n{json.dumps(messages, indent=2, default=str)}")
+        
         try:
-            return self.llm.chat.completions.create(**request_params)
+            response = self.llm.chat.completions.create(**request_params)
+            
+            # TRACE LOG RESPONSE
+            try:
+                # Safe inspection for logging
+                content = response.choices[0].message.content
+                tool_calls = response.choices[0].message.tool_calls
+                log_msg = f"\n[{self.name}] <<< RECEIVED FROM LLM:\nContent: {content}"
+                if tool_calls:
+                    log_msg += f"\nTools: {tool_calls}"
+                self.trace_logger.debug(log_msg)
+            except Exception as e:
+                self.trace_logger.debug(f"[{self.name}] <<< RECEIVED (Parse Error in Logging): {response}")
+
+            return response
         except Exception as e:
+            self.logger.error(f"[{self.name}] LLM Loop Call Failed: {e}", exc_info=True)
             print(f"[{self.name}] LLM Loop Call Failed: {e}")
             raise e
 
@@ -221,7 +270,7 @@ class LLMAgent(BaseAgent):
 
         # Standard Tools Mapping
         if func_name == "set_price":
-            return Action(ActionType.SET_PRICE, {"price": args.get("price", 5.0)})
+            return Action(type=ActionType.SET_PRICE, parameters={"price": args.get("price", 5.0)})
         
         elif func_name == "buy_supplies":
             # Simplified mapping logic
@@ -235,18 +284,18 @@ class LLMAgent(BaseAgent):
                     # or the server handles partial args. 
                     # Actually, let's keep it simple:
                     if k in ["soap", "softener", "parts", "cleaning_supplies"]:
-                        return Action(ActionType.BUY_SUPPLIES, {"item": k, "quantity": v})
+                        return Action(type=ActionType.BUY_SUPPLIES, parameters={"item": k, "quantity": v})
             # Fallback
-            return Action(ActionType.BUY_SUPPLIES, {"item": "soap", "quantity": 10})
+            return Action(type=ActionType.BUY_SUPPLIES, parameters={"item": "soap", "quantity": 10})
             
         elif func_name == "marketing_campaign":
-            return Action(ActionType.MARKETING_CAMPAIGN, {"cost": args.get("cost", 100)})
+            return Action(type=ActionType.MARKETING_CAMPAIGN, parameters={"cost": args.get("cost", 100)})
             
         elif func_name == "upgrade_machine":
-            return Action(ActionType.UPGRADE_MACHINE, {"count": args.get("count", 1)})
+            return Action(type=ActionType.UPGRADE_MACHINE, parameters={"count": args.get("count", 1)})
         
         elif func_name == "wait":
-             return Action(ActionType.WAIT)
+             return Action(type=ActionType.WAIT)
              
         elif func_name in FUNCTION_TO_ACTION:
              # Catch-all for simple tools
@@ -399,14 +448,14 @@ Analyze the situation and use the tools to take your actions for this turn."""
         # Low inventory? Buy supplies
         if inventory.get('soap', 0) < 20 and balance > 50:
             self.last_thinking = ["Low on soap, need to restock"]
-            action = Action(ActionType.BUY_SUPPLIES, {"item": "soap", "quantity": 30})
+            action = Action(type=ActionType.BUY_SUPPLIES, parameters={"item": "soap", "quantity": 30})
             self.last_actions = [action]
             return action
         
         # Good balance? Maybe marketing
         if balance > 300 and random.random() < 0.3:
             self.last_thinking = ["Have surplus funds, investing in marketing"]
-            action = Action(ActionType.MARKETING_CAMPAIGN, {"cost": 100})
+            action = Action(type=ActionType.MARKETING_CAMPAIGN, parameters={"cost": 100})
             self.last_actions = [action]
             return action
         
@@ -414,12 +463,12 @@ Analyze the situation and use the tools to take your actions for this turn."""
         if random.random() < 0.2:
             new_price = round(random.uniform(4.0, 7.0), 2)
             self.last_thinking = [f"Adjusting price to ${new_price} to stay competitive"]
-            action = Action(ActionType.SET_PRICE, {"price": new_price})
+            action = Action(type=ActionType.SET_PRICE, parameters={"price": new_price})
             self.last_actions = [action]
             return action
         
         # Default: wait
         self.last_thinking = ["Market conditions stable, waiting"]
-        action = Action(ActionType.WAIT)
+        action = Action(type=ActionType.WAIT)
         self.last_actions = [action]
         return action

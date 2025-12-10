@@ -23,7 +23,7 @@ LLMDICT={
       "GEMINI":{
         "APIKEY":E("GEMINI_api_key"),
         "BASEURL":E("GEMINI_base_url"),
-        "MODEL":"gemini-2.5-flash",
+        "MODEL":"gemini-flash-lite-latest",
         "VERSION":VERSION
     },
       "OPSUS":{
@@ -61,6 +61,10 @@ LLMDICT["NPC"] = npc
 # pprint(LLMDICT)
 
 # NPC Provider for dynamic world generation (customers, vendors, events)
-# Use fast/cheap models to minimize costs
+# Use fast/cheap models to minimize costs gemini is also fast and cheap
+GAME_MASTE_MODEL = "gemini-flash-latest"
+GAME_MASTE_PROVIDER = "GEMINI"
+JUDGE_MODEL = "claude-4.5-opus"
+JUDGE_PROVIDER = "OPSUS"
 NPC_PROVIDER = "PHI"  # or "MISTRAL" - both are fast and cheap
 

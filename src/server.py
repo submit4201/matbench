@@ -37,7 +37,33 @@ from src.agents.base_agent import Action, ActionType, Observation
 from src.engine.social.communication import MessageIntent
 from src.benchmark.scenarios import get_scenario, list_scenarios, Scenario
 
+
+from src.utils.logger import setup_logging, get_logger
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+# Setup logging immediately
+setup_logging()
+logger = get_logger("src.server")
+
 app = FastAPI(title="Laundromat Tycoon", version="1.0.0")
+
+# Logging Middleware
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = datetime.now()
+        logger.info(f"REQUEST: {request.method} {request.url}")
+        
+        try:
+            response = await call_next(request)
+            process_time = (datetime.now() - start_time).total_seconds()
+            logger.info(f"RESPONSE: {response.status_code} (took {process_time:.3f}s)")
+            return response
+        except Exception as e:
+            logger.error(f"REQUEST FAILED: {str(e)}", exc_info=True)
+            raise e
+
+app.add_middleware(LoggingMiddleware)
 
 # Enable CORS
 app.add_middleware(
@@ -117,7 +143,18 @@ from src.api_types import (
 
 
 def _log_ai_response(agent_id: str, week: int, thinking: List[str], actions: List[Action], raw_response: str):
-    """Log AI response to file for analysis and debugging"""
+    """
+    Log AI response to file for analysis and debugging
+    
+    Args:
+        agent_id (str): ID of the agent
+        week (int): Current week
+        thinking (List[str]): List of AI thoughts
+        actions (List[Action]): List of actions taken
+        raw_response (str): Raw LLM response
+     #! TODO: this accually needs to be a nother format json/yaml/xml something md great for formatting but not for analysis
+    #! TODO: should have think, action, thought,     
+    """
     # Create game-specific log directory with timestamp
     game_id = getattr(game, 'game_id', datetime.now().strftime("%Y%m%d_%H%M%S"))
     log_dir = f"logs/games/{game_id}/ai_responses"
@@ -562,7 +599,7 @@ def take_action(req: ActionRequest):
     
     try:
         action_type = ActionType(req.action_type)
-        action = Action(action_type, req.parameters)
+        action = Action(type=action_type, parameters=req.parameters)
         
         state_before = game.engine.states["p1"].model_dump(mode="json", exclude={'ledger'})
 
@@ -682,7 +719,7 @@ def make_credit_payment(agent_id: str, req: CreditPaymentRequest):
     
     # We use the generic action pipeline to ensure fair play and logging
     try:
-        action = Action(ActionType.MAKE_PAYMENT, {
+        action = Action(type=ActionType.MAKE_PAYMENT, parameters={
             "payment_id": req.payment_id,
             "amount": req.amount
         })

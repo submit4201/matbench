@@ -75,6 +75,9 @@ class ChatCompletion:
     usage: Optional[Usage] = None
 
 
+
+from src.utils.logger import get_logger
+
 class GeminiClient:
     """
     Google Gemini API client with OpenAI-compatible interface.
@@ -101,6 +104,7 @@ class GeminiClient:
     ):
         self.api_key = api_key
         self.model = model
+        self.logger = get_logger("src.agents.gemini") # Setup logger
         
         # Initialize the Gemini client
         self.client = genai.Client(api_key=api_key)
@@ -157,15 +161,79 @@ class GeminiClient:
         for msg in messages:
             if msg["role"] == "system":
                 system_instruction = msg["content"]
+            
             elif msg["role"] == "user":
                 gemini_contents.append(types.Content(
                     role="user",
                     parts=[types.Part(text=msg["content"])]
                 ))
+            
             elif msg["role"] == "assistant":
+                parts = []
+                if msg.get("content"):
+                     parts.append(types.Part(text=msg["content"]))
+                
+                # Handle tool calls
+                if msg.get("tool_calls"):
+                    for tc in msg["tool_calls"]:
+                        if tc["type"] == "function":
+                            # Gemini SDK v1beta expects dict for args, not string
+                            import json
+                            args_dict = {}
+                            try:
+                                args_str = tc["function"]["arguments"]
+                                if isinstance(args_str, str):
+                                    args_dict = json.loads(args_str)
+                                else:
+                                    args_dict = args_str
+                            except:
+                                args_dict = {}
+                                
+                            parts.append(types.Part(
+                                function_call=types.FunctionCall(
+                                    name=tc["function"]["name"],
+                                    args=args_dict
+                                )
+                            ))
+                
+                if parts:
+                    gemini_contents.append(types.Content(
+                        role="model",
+                        parts=parts
+                    ))
+            
+            elif msg["role"] == "tool":
+                # OpenAI sends tool_call_id, but Gemini matches by function name sequence?
+                # Actually Gemini assumes function_response comes after function_call.
+                # OpenAI format: rule="tool", tool_call_id="...", content="..."
+                # We need to map tool_call_id back to name if possible, or assume simple sequential?
+                # The LLMAgent doesn't explicitly pass function name in tool messages, only tool_call_id.
+                # However, usually we can infer or pass it. 
+                # Let's see what LLMAgent sends.
+                
+                # For now, let's try to construct a FunctionResponse part.
+                # But we need the function name.
+                # If we can't get it, this might be tricky.
+                # LLM execution loop in llm_agent.py sends:
+                # {"role": "tool", "tool_call_id": tool_call.id, "name": tool_call.function.name, "content": ...}
+                # So we DO have name!
+                
+                func_name = msg.get("name")
+                content = msg.get("content")
+                
+                part = types.Part(
+                    function_response=types.FunctionResponse(
+                        name=func_name,
+                        response={"result": content} 
+                    )
+                )
+                
+                # Gemini expects function_response in a 'user' role message? 
+                # Or a 'function' role? 
+                # In google-genai 0.3, it's typically a 'user' role with function_response parts.
                 gemini_contents.append(types.Content(
-                    role="model",
-                    parts=[types.Part(text=msg["content"])]
+                    role="user",
+                    parts=[part]
                 ))
         
         # Build generation config
