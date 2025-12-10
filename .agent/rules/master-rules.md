@@ -38,7 +38,7 @@ master rules
     5-C: use a consistent naming convention for variables and constants
     5-D: use a consistent naming convention for modules and packages
     5-E: use a consistent naming convention for files and directories
-    5-F respect seperation of concerns
+    5-F respect separation of concerns
     5-G: Frontend should be for User interaction 
     5-H: Backend should be for Business logic, api, Database, and Logic 
     5-I: Middleware for Validations, authentication, logging, Error handling, security and other cross-cutting concerns
