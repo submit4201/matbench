@@ -3,6 +3,9 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 import random
+from src.utils.logger import get_logger
+
+logger = get_logger("src.engine.core.events", category="events")
 
 class EventType(Enum):
     GLOBAL_HEATWAVE = "global_heatwave"

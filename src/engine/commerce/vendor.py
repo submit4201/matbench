@@ -5,6 +5,9 @@ import math
 from src.models.commerce import VendorTier, SupplyOffer, VendorProfile, SupplyChainEventType
 from .supply import SupplyChainManager
 from src.config import settings
+from src.utils.logger import get_logger
+
+logger = get_logger("src.engine.commerce.vendor", category="commerce")
 
 class Vendor:
     def __init__(self, profile: VendorProfile):

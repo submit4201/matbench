@@ -1,68 +1,152 @@
-
-import os
+import json
 import logging
-from logging.handlers import RotatingFileHandler
+import zipfile
+import time
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from datetime import datetime
+from typing import Optional
 
 # Constants
-LOG_DIR = Path("logs")
-APP_LOG_FILE = LOG_DIR / "app.log"
-LLM_TRACE_FILE = LOG_DIR / "llm_trace.log"
-SERVER_LOG_FILE = LOG_DIR / "server.log"
+BASE_LOG_DIR = Path(".log")
+MAX_BACKUP_COUNT = 24  # Keep last 24 rotated files (2 days worth if 2h rotation)
+ROTATION_INTERVAL = 2  # Hours
+ROTATION_WHEN = 'H'    # Hours
 
-MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-BACKUP_COUNT = 5
+class CompressedTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """
+    Extended TimedRotatingFileHandler that zips the rotated log file.
+    """
+    def __init__(self, filename, when='h', interval=1, backupCount=0, encoding=None, delay=False, utc=False, atTime=None):
+        super().__init__(filename, when, interval, backupCount, encoding, delay, utc, atTime)
 
-def setup_logging(level=logging.INFO):
+    def rotate(self, source: str, dest: str):
+        """
+        Rotates the source log file to dest, then zips dest.
+        """
+        # 1. Perform standard rotation (rename source -> dest)
+        if os.path.exists(source):
+            try:
+                os.rename(source, dest)
+            except OSError:
+                # Fallback for Windows if file is locked
+                pass
+        
+        # 2. Compress the rotated file
+        self.compress_log(dest)
+
+    def compress_log(self, file_path: str):
+        """
+        Compresses the given log file into a zip archive and removes the original.
+        """
+        try:
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
+                return
+
+            zip_name = f"{file_path}.zip"
+            with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.write(file_path, file_path_obj.name)
+            
+            # Remove original log file after zipping
+            os.remove(file_path)
+        except Exception as e:
+            # Fallback: print to stderr if logging fails (since this IS the logging system)
+            print(f"Failed to compress log {file_path}: {e}")
+
+class JSONFormatter(logging.Formatter):
     """
-    Setup centralized logging with rotation.
+    Formatter to output logs in JSON format.
     """
-    if not LOG_DIR.exists():
-        LOG_DIR.mkdir(exist_ok=True)
+    def format(self, record):
+        log_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno
+        }
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
+def _ensure_log_dir(category: str = "general") -> Path:
+    """Correctly creates subdirectory for logs: logs/server/, logs/agents/, etc."""
+    log_dir = BASE_LOG_DIR / category
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+def setup_logger(name: str, category: str = "general", level=logging.INFO) -> logging.Logger:
+    """
+    Sets up a logger with:
+    1. Console Handler (Standard Output)
+    2. TimedRotatingFileHandler (Per category, rotated every 2h, zipped)
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
     
-    # Root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    
-    # Common Formatter
+    # Avoid adding handlers multiple times
+    if logger.handlers:
+        return logger
+
     formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-8s | %(module)s:%(funcName)s:%(lineno)d - %(message)s'
+        '%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s'
     )
-    
+
     # 1. Console Handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(level)
-    root_logger.addHandler(console_handler)
-    
-    # 2. App Log File (Rotating)
-    app_handler = RotatingFileHandler(
-        APP_LOG_FILE, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding='utf-8'
-    )
-    app_handler.setFormatter(formatter)
-    app_handler.setLevel(level)
-    root_logger.addHandler(app_handler)
-    
-    # 3. LLM Trace Logger (Specific)
-    llm_logger = logging.getLogger("src.agents.llm_trace")
-    llm_logger.setLevel(logging.DEBUG) # Always capture debug for traces
-    llm_handler = RotatingFileHandler(
-        LLM_TRACE_FILE, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding='utf-8'
-    )
-    llm_handler.setFormatter(formatter)
-    llm_logger.addHandler(llm_handler)
-    llm_logger.propagate = False # Don't duplicate to root
-    
-    # 4. Success Message
-    logging.info("==========================================")
-    logging.info(f"Logging Initialized. Level: {logging.getLevelName(level)}")
-    logging.info(f"Log Directory: {LOG_DIR.absolute()}")
-    logging.info("==========================================")
+    logger.addHandler(console_handler)
 
-def get_logger(name: str):
-    """Get a logger instance"""
-    return logging.getLogger(name)
+    # 2. File Handler
+    log_dir = _ensure_log_dir(category)
+    # Filename format: Category-Date.log (Rotation adds timestamp suffix)
+    # Actually, TimedRotatingFileHandler handles the suffix. 
+    # We'll stick to a base name "service.log" and let it rotate to "service.log.2023-..."
+    # User requested: "logs named by date and time with a discriptor... GameMaster-MM-DD-YYYY--HH.log"
+    # To achieve exact naming at START time is tricky with rotation, usually rotation APPENDS date.
+    # We will use a base name that includes the startup date, and allow rotation to append hours.
+    
+    current_date = datetime.now().strftime("%m-%d-%Y--%H")
+    base_filename = log_dir / f"{category}-{current_date}.log"
 
-def get_llm_trace_logger():
-    """Get the specialized LLM trace logger"""
-    return logging.getLogger("src.agents.llm_trace")
+    file_handler = CompressedTimedRotatingFileHandler(
+        filename=base_filename,
+        when=ROTATION_WHEN,
+        interval=ROTATION_INTERVAL,
+        backupCount=MAX_BACKUP_COUNT,
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(JSONFormatter('%(asctime)s'))
+    
+    # Custom namer for the rotated file to match user format better?
+    # Default is filename.YYYY-MM-DD_HH-MM
+    # We will accept standard rotation suffix for now to ensure robustness.
+    
+    logger.addHandler(file_handler)
+    logger.propagate = False  # Prevent double logging if attached to root
+
+    return logger
+
+# -- Global/Default Setup for Server --
+ROOT_LOGGER = setup_logger("root", "general")
+
+def get_logger(name: str, category: str = None) -> logging.Logger:
+    """
+    Factory to get or create a logger.
+    If category is provided, ensures a file handler for that category exists.
+    """
+    # Simple mapping based on name if category not provided
+    if not category:
+        if "server" in name or "uvicorn" in name:
+            category = "server"
+        elif "agent" in name:
+            category = "agents"
+        elif "engine" in name:
+            category = "engine"
+        else:
+            category = "general"
+            
+    return setup_logger(name, category)

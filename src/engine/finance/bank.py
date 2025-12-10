@@ -10,7 +10,10 @@ from .bills import BillSystem
 from .tax import TaxSystem
 from .loans import LoanSystem
 
-logger = logging.getLogger(__name__)
+from .loans import LoanSystem
+from src.utils.logger import get_logger
+
+logger = get_logger("src.engine.finance.bank", category="finance")
 
 class BankSystem:
     """

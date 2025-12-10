@@ -38,13 +38,12 @@ from src.engine.social.communication import MessageIntent
 from src.benchmark.scenarios import get_scenario, list_scenarios, Scenario
 
 
-from src.utils.logger import setup_logging, get_logger
+from src.utils.logger import get_logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-# Setup logging immediately
-setup_logging()
-logger = get_logger("src.server")
+# Logger Setup
+logger = get_logger("src.server", category="server")
 
 app = FastAPI(title="Laundromat Tycoon", version="1.0.0")
 

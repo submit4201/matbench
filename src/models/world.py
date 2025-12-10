@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from src.config import settings
 from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, Bill, FinancialReport, TransactionCategory
 from src.models.base import GameModel
-from src.models.social import SocialScore
+from src.models.social import SocialScore, Ticket
 
 class Machine(GameModel):
     id: str

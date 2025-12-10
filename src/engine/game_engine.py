@@ -1,5 +1,5 @@
 from typing import Dict, List, Any, Optional
-import logging
+from src.utils.logger import get_logger
 from src.world.laundromat import LaundromatState
 from src.engine.core.time import TimeSystem, WeekPhase, Day
 from src.engine.core.events import EventManager
@@ -15,8 +15,9 @@ from src.engine.commerce.vendor import VendorManager
 from src.engine.commerce.real_estate import RealEstateManager
 from src.engine.metrics_auditor import MetricsAuditor
 import copy
+from src.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("src.engine", category="engine")
 
 class GameEngine:
     """
@@ -48,6 +49,9 @@ class GameEngine:
         self.metrics_auditor = MetricsAuditor()
         self.financial_system = FinancialSystem(agent_ids)
         self.real_estate_manager = RealEstateManager()
+        
+        # Initialize Logger
+        self.logger = get_logger("src.engine", category="engine")
         
         # Track pending actions for the current turn (batching)
         self.pending_actions: Dict[str, List[Dict[str, Any]]] = {
@@ -146,7 +150,7 @@ class GameEngine:
             logger.info(f"Market Trend: {trend.news_headline}")
             # Broadcast news
             for agent_id in self.agent_ids:
-                self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.NEWS)
+                self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.ANNOUNCEMENT)
 
         # 1.5 Process Pending Deliveries
         for agent_id, state in self.states.items():
