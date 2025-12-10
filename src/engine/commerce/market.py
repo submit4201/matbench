@@ -3,10 +3,22 @@ from dataclasses import dataclass, field
 import math
 from src.engine.finance.models import RevenueStream, Loan, TaxRecord, FinancialReport
 
+@dataclass
+class MarketTrend:
+    week: int
+    primary_resource: str # e.g., "detergent", "parts"
+    price_multiplier: float # 1.2 = 20% higher cost
+    demand_shift: float # 1.1 = 10% more customer demand
+    news_headline: str
+
 class MarketSystem:
     def __init__(self):
         self.tax_rate = 0.08
         self.inflation_rate = 0.0
+        
+        # Trends
+        self.active_trend: Optional[MarketTrend] = None
+        self.history: List[MarketTrend] = []
         
         # Default Revenue Streams
         self.base_streams = [
@@ -22,6 +34,51 @@ class MarketSystem:
             RevenueStream("Snacks & Drinks", "vending", 2.50, 1.00, 0.3, False),
             RevenueStream("Wash & Fold", "premium", 1.50, 0.50, 0.2, False), # Price per lb, cost is labor mostly
         ]
+
+    def update_trends(self, current_week: int):
+        """Generates or updates market trends."""
+        import random
+        # 20% chance to change trend each week
+        if not self.active_trend or random.random() < 0.2:
+            resources = ["detergent", "softener", "parts", "electricity", "water"]
+            target = random.choice(resources)
+            
+            # Fluctuation -0.2 to +0.3
+            price_mult = 1.0 + (random.random() * 0.5 - 0.2)
+            demand_mult = 1.0 + (random.random() * 0.4 - 0.2)
+            
+            headlines = {
+                "detergent": "Chemical plant strike affects soap prices!",
+                "softener": "New eco-regulations impact softener supply.",
+                "parts": "Global shipping delays cause shortage of machine parts.",
+                "electricity": "Grid instability leads to power rate hikes.",
+                "water": "Drought conditions trigger water conservation pricing."
+            }
+            
+            headline = headlines.get(target, f"Market fluctuations observed in {target}.")
+            
+            self.active_trend = MarketTrend(
+                week=current_week,
+                primary_resource=target,
+                price_multiplier=round(price_mult, 2),
+                demand_shift=round(demand_mult, 2),
+                news_headline=headline
+            )
+            self.history.append(self.active_trend)
+
+    def get_market_report(self) -> Dict[str, Any]:
+        """Returns a snapshot of the current market state."""
+        if not self.active_trend:
+            return {"status": "Stable", "headline": "The market is calm."}
+            
+        return {
+            "week": self.active_trend.week,
+            "status": "Volatile" if abs(self.active_trend.price_multiplier - 1.0) > 0.1 else "Stable",
+            "impact_resource": self.active_trend.primary_resource,
+            "price_factor": self.active_trend.price_multiplier,
+            "demand_factor": self.active_trend.demand_shift,
+            "headline": self.active_trend.news_headline
+        }
 
     def get_available_loans(self, social_score: float, weeks_operated: int, profitable_weeks: int) -> List[Dict[str, Any]]:
         loans = []

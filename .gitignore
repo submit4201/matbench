@@ -26,16 +26,17 @@ venv/
 env/
 ENV/
 .env
+.venv
 E:\projects\repo_mat\matbench\venv313
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
-
+.bak/
 # Logs
 logs/
 *.log
-
+.agent/
 # Editor
 .vscode/
 .idea/

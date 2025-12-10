@@ -113,6 +113,25 @@ class GameEngine:
             
         return results
 
+    def _calculate_staff_effects(self, state: LaundromatState) -> Dict[str, float]:
+        """Calculates total bonuses from staff members."""
+        effects = {
+            "cleanliness_boost": 0.0,
+            "maintenance_skill": 0.0, # Reduces wear rate
+            "service_boost": 0.0      # Improves customer satisfaction
+        }
+        
+        for staff in state.staff:
+            skill = staff.skill_level
+            if staff.role == "cleaner":
+                effects["cleanliness_boost"] += 0.2 * skill
+            elif staff.role == "technician":
+                effects["maintenance_skill"] += 0.1 * skill
+            elif staff.role == "attendant":
+                effects["service_boost"] += 0.15 * skill
+                
+        return effects
+
     def process_week(self) -> Dict[str, Any]:
         """
         Processes the End-of-Week logic (Financials, Events, etc.).
@@ -120,8 +139,14 @@ class GameEngine:
         """
         results = {}
         
-        # Note: Actions are now processed daily, so we don't process them here again
-        # unless there are weekly-specific batched actions? No, keep it daily.
+        # 0. Update Market Trends
+        self.economy_system.update_trends(self.time_system.current_week)
+        trend = self.economy_system.active_trend
+        if trend and trend.week == self.time_system.current_week:
+            logger.info(f"Market Trend: {trend.news_headline}")
+            # Broadcast news
+            for agent_id in self.agent_ids:
+                self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.NEWS)
 
         # 1.5 Process Pending Deliveries
         for agent_id, state in self.states.items():
@@ -135,8 +160,7 @@ class GameEngine:
                         state.inventory[item] = state.inventory.get(item, 0) + qty
                         
                         # Notify
-                        self.communication.send_message(
-                            sender_id="System",
+                        self.communication.send_system_message(
                             recipient_id=agent_id,
                             content=f"Delivery of {qty} {item} from {delivery['vendor_name']} has arrived.",
                             week=self.time_system.current_week
@@ -145,6 +169,8 @@ class GameEngine:
                         remaining_deliveries.append(delivery)
                 state.pending_deliveries = remaining_deliveries
 
+
+
         # 2. Simulate Week (if we are in PEAK phase or just batching weekly)
         # For now, we assume this is called once per week after all decisions
         
@@ -152,6 +178,15 @@ class GameEngine:
         
         for agent_id, state in self.states.items():
             try:
+                # Calculate Staff Bonuses
+                staff_effects = self._calculate_staff_effects(state)
+
+                # Apply Cleanliness (Decayed by traffic, boosted by staff)
+                # Traffic decay placeholder: -0.1 per 100 customers?
+                # For now just set base Cleanliness + Staff Boost
+                base_clean = 0.5
+                state.cleanliness = min(1.0, base_clean + staff_effects["cleanliness_boost"])
+
                 # Get active effects
                 effects = self.event_manager.get_active_effects(agent_id)
                 
@@ -167,9 +202,11 @@ class GameEngine:
                 # Base share modified by reputation (baseline 50) and marketing
                 raw_demand = base_customers * (1 + state.marketing_boost) * (state.social_score.total_score / 50.0)
                 
-                # Apply Demand Multiplier
+                # Apply Demand Multiplier (Events + Market Trend)
                 raw_demand *= effects["demand_multiplier"]
-                
+                if trend and trend.demand_shift != 1.0:
+                     raw_demand *= trend.demand_shift
+
                 if agent_id == "p1":
                     logger.info(f"[DEBUG] P1 Demand: Base={base_customers}, Soc={state.social_score.total_score}, Mkt={state.marketing_boost}, Eff={effects['demand_multiplier']}")
 
@@ -186,9 +223,12 @@ class GameEngine:
                 # 1. Good service bonus - Customers are generally happy when served
                 if customer_count > 50:
                     # Small boost for each 100 customers served (representing good experiences)
-                    service_boost = (customer_count / 200.0) * 1.5  # ~1-3 points for busy weeks
+                    # Boosted by Attendants
+                    service_quality = 1.0 + staff_effects["service_boost"]
+                    service_boost = (customer_count / 200.0) * 1.5 * service_quality
+                    
                     state.update_social_score("customer_satisfaction", service_boost)
-                    logger.info(f"Agent {agent_id}: Customer service boost +{service_boost:.1f} for {customer_count:.0f} customers")
+                    logger.info(f"Agent {agent_id}: Customer service boost +{service_boost:.1f} for {customer_count:.0f} customers (Quality: {service_quality:.2f})")
                 
                 # 1.5 Ethical Dilemmas
                 # Trigger a dilemma if conditions are met
@@ -240,7 +280,9 @@ class GameEngine:
                 # 4. Machine quality bonus - No broken machines = better experience
                 broken_count = sum(1 for m in state.machines if m.is_broken)
                 if broken_count == 0 and len(state.machines) >= 10:
-                    state.update_social_score("customer_satisfaction", 1.0)
+                    # Cleanliness bonus also applied here
+                    bonus = 1.0 + (1.0 if state.cleanliness > 0.8 else 0.0)
+                    state.update_social_score("customer_satisfaction", bonus)
                 elif broken_count > len(state.machines) * 0.3:
                     # More than 30% broken is a problem
                     state.update_social_score("customer_satisfaction", -2.0)
@@ -474,6 +516,175 @@ class GameEngine:
                     logger.warning(f"Agent {state.id} insufficient funds for building {listing.price}")
             else:
                 logger.warning(f"Building listing {listing_id} not found/expired.")
+
+
+
+        # --- New Actions ---
+
+        elif action_type == "HIRE_STAFF":
+            role = action.get("role", "attendant")
+            # 1. Calculate Hiring Cost if any
+            hiring_fee = 100.0 # Recruitment fee
+            if state.balance >= hiring_fee:
+                state.ledger.add(-hiring_fee, "expense", f"Hiring Fee ({role})", self.time_system.current_week)
+                
+                # 2. Create Staff Member
+                from src.models.world import StaffMember
+                new_id = f"S{len(state.staff) + 1}_{self.time_system.current_week}"
+                new_staff = StaffMember(
+                    id=new_id, 
+                    name=f"Staff {new_id}", 
+                    role=role, 
+                    skill_level=0.5, 
+                    wage=15.0 if role == "attendant" else 20.0
+                )
+                state.staff.append(new_staff)
+                logger.info(f"Agent {state.id} hired {role} {new_id}")
+                self.communication.send_system_message(
+                    state.id, 
+                    f"Hired new {role}. Wage: ${new_staff.wage}/hr.", 
+                    self.time_system.current_week
+                )
+            else:
+                 self.communication.send_system_message(state.id, "Insufficient funds to hire staff.", self.time_system.current_week)
+
+        elif action_type == "FIRE_STAFF":
+            staff_id = action.get("staff_id")
+            # Find and remove
+            staff_to_fire = next((s for s in state.staff if s.id == staff_id), None)
+            if staff_to_fire:
+                state.staff.remove(staff_to_fire)
+                # Severance?
+                severance = staff_to_fire.wage * 20 # 1 week pay
+                state.ledger.add(-severance, "expense", f"Severance ({staff_to_fire.id})", self.time_system.current_week)
+                logger.info(f"Agent {state.id} fired {staff_id}")
+                self.communication.send_system_message(state.id, f"Fired {staff_to_fire.name}. Paid ${severance} severance.", self.time_system.current_week)
+            else:
+                logger.warning(f"Agent {state.id} tried to fire non-existent staff {staff_id}")
+
+        elif action_type == "TRAIN_STAFF":
+            staff_id = action.get("staff_id")
+            staff = next((s for s in state.staff if s.id == staff_id), None)
+            cost = 150.0
+            if staff and state.balance >= cost:
+                state.ledger.add(-cost, "expense", f"Training ({staff_id})", self.time_system.current_week)
+                staff.skill_level = min(1.0, staff.skill_level + 0.1)
+                staff.morale = min(1.0, staff.morale + 0.1)
+                self.communication.send_system_message(state.id, f"Trained {staff.name}. Skill: {staff.skill_level:.1f}", self.time_system.current_week)
+            elif not staff:
+                logger.warning(f"Agent {state.id} tried to train non-existent staff {staff_id}")
+
+        elif action_type == "PERFORM_MAINTENANCE":
+            parts_needed = len(state.machines) // 5
+            parts_in_stock = state.inventory.get("parts", 0)
+            
+            if parts_in_stock >= parts_needed:
+                # Deduct
+                state.inventory["parts"] -= parts_needed
+                # Effect: Improve condition of all machines
+                for m in state.machines:
+                    m.condition = min(1.0, m.condition + 0.2)
+                    if m.is_broken and m.condition > 0.5:
+                         m.is_broken = False # Fix if condition improves enough
+                
+                self.communication.send_system_message(state.id, f"Maintenance performed. Used {parts_needed} parts. All machines condition improved.", self.time_system.current_week)
+            else:
+                self.communication.send_system_message(state.id, f"Not enough parts for full maintenance. Need {parts_needed}, have {parts_in_stock}.", self.time_system.current_week)
+
+        # Re-map legacy Negotiate if needed, or implement fresh
+        elif action_type == "NEGOTIATE_CONTRACT":
+             # Use existing negotiate logic logic but mapped here
+             item = action.get("item", "soap")
+             vendor_id = action.get("vendor_id", "bulkwash")
+             # ... Call inner logic akin to existing 'NEGOTIATE' handling or redirect
+             # Let's simple redirect to the 'NEGOTIATE' block existing above?
+             # Or duplicate logic for clarity. It essentially calls vendor.negotiate_price
+             vendor = self.vendor_manager.get_vendor(vendor_id)
+             if vendor:
+                social_score = state.social_score.total_score
+                result = vendor.negotiate_price(item, state.name, social_score, agent_id=state.id)
+                self.communication.send_message(vendor.profile.name, state.id, result["message"], self.time_system.current_week)
+                if result["success"]:
+                    logger.info(f"Agent {state.id} negotiated {item} with {vendor_id}")
+             else:
+                 self.communication.send_system_message(state.id, f"Vendor {vendor_id} not found.", self.time_system.current_week)
+
+        elif action_type == "INSPECT_VENDOR":
+             vendor_id = action.get("vendor_id")
+             vendor = self.vendor_manager.get_vendor(vendor_id)
+             if vendor:
+                 catalog_str = json.dumps(vendor.catalog, indent=2)
+                 self.communication.send_system_message(state.id, f"Vendor {vendor_id} Catalog:\n{catalog_str}", self.time_system.current_week)
+             else:
+                 self.communication.send_system_message(state.id, f"Vendor {vendor_id} not found.", self.time_system.current_week)
+
+        elif action_type == "INSPECT_DELIVERIES":
+             pending = state.pending_deliveries
+             msg = f"Pending Deliveries: {json.dumps(pending, indent=2)}" if pending else "No pending deliveries."
+             self.communication.send_system_message(state.id, msg, self.time_system.current_week)
+
+        elif action_type == "GET_FINANCIAL_REPORT":
+             # Get last report
+             if state.financial_reports:
+                 last_report = state.financial_reports[-1]
+                 # Convert to readable string
+                 msg = f"Last Week Report (Week {last_report.week}):\nRevenue: ${last_report.total_revenue:.2f}\nExpenses: ${last_report.total_operating_expenses:.2f}\nNet Income: ${last_report.net_income:.2f}\nCash: ${last_report.cash_ending:.2f}"
+                 self.communication.send_system_message(state.id, msg, self.time_system.current_week)
+             else:
+                 self.communication.send_system_message(state.id, "No financial reports generated yet.", self.time_system.current_week)
+
+        elif action_type == "CHECK_CREDIT_SCORE":
+             # Query financial system
+             score = self.financial_system.get_credit_score_summary(state.id)
+             self.communication.send_system_message(state.id, f"Credit Audit:\n{json.dumps(score, indent=2)}", self.time_system.current_week)
+
+        # --- Final Gaps Logic ---
+
+        elif action_type == "EMERGENCY_REPAIR":
+            machine_id = action.get("machine_id")
+            machine = next((m for m in state.machines if m.id == machine_id), None)
+            if machine:
+                cost = 250.0 # High cost for emergency service
+                if state.balance >= cost:
+                    state.ledger.add(-cost, "maintenance", f"Emergency Repair ({machine_id})", self.time_system.current_week)
+                    machine.is_broken = False
+                    machine.condition = 1.0 # Fully restored
+                    self.communication.send_system_message(state.id, f"Emergency repair complete for {machine_id}. Cost: ${cost}", self.time_system.current_week)
+                    logger.info(f"Agent {state.id} used emergency repair on {machine_id}")
+                else:
+                    self.communication.send_system_message(state.id, "Insufficient funds for emergency repair ($250).", self.time_system.current_week)
+            else:
+                 self.communication.send_system_message(state.id, f"Machine {machine_id} not found.", self.time_system.current_week)
+
+        elif action_type == "CHECK_REGULATIONS":
+            # Mock Regulatory Body response
+            # In future: self.regulatory_system.get_status(state.id)
+            reg_status = "Active Regulations: Environmental Compliance (Active). No pending fines. Compliance Score: 100%."
+            self.communication.send_system_message(state.id, reg_status, self.time_system.current_week)
+
+        elif action_type == "CHECK_REPUTATION":
+            # Breakdown of Social Score
+            # In future: self.social_system.get_detailed_score(state.id)
+            breakdown = f"Reputation Audit:\nTotal: {state.social_score.total_score:.1f}\n- Community: {state.social_score.community_trust:.1f}\n- Eco: {state.social_score.eco_rating:.1f}\n- Labor: {state.social_score.labor_practices:.1f}"
+            self.communication.send_system_message(state.id, breakdown, self.time_system.current_week)
+
+        elif action_type == "INSPECT_PUBLIC_RECORDS":
+            target_id = action.get("entity_id", "global")
+            # Mock Records
+            if target_id == "global" or not target_id:
+                 msg = "Public Records: No major incidents reported in the district."
+            else:
+                 msg = f"Public Records ({target_id}): Clean record. Licensed operator since 2024."
+            self.communication.send_system_message(state.id, msg, self.time_system.current_week)
+
+        elif action_type == "CHECK_MARKET_TRENDS":
+            report = self.economy_system.get_market_report()
+            msg = f"Market Report (Week {self.time_system.current_week}):\n" \
+                  f"Headline: {report['headline']}\n" \
+                  f"Status: {report['status']}\n" \
+                  f"Impact: {report.get('impact_resource', 'None')} " \
+                  f"(Price x{report.get('price_factor', 1.0)}, Demand x{report.get('demand_factor', 1.0)})"
+            self.communication.send_system_message(state.id, msg, self.time_system.current_week)
 
     def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> FinancialReport:
         report = FinancialReport(week=self.time_system.current_week)

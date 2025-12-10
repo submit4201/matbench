@@ -11,7 +11,7 @@ Features:
 # Load environment variables FIRST
 import os
 
-from src.config import LLMDICT
+from src.config import settings
 
 
 from fastapi import FastAPI, HTTPException
@@ -265,7 +265,7 @@ def _apply_action(state: LaundromatState, action: Action):
                 # Increased from 2.0 to 5.0 for more noticeable reputation impact
                 state.update_social_score("customer_satisfaction", 5.0)
     elif action.type == ActionType.UPGRADE_MACHINE:
-        cost = 500
+        cost = settings.economy.machine_upgrade_cost
         if state.balance >= cost:
             from src.engine.finance.models import TransactionCategory
             state.ledger.add(
@@ -292,13 +292,13 @@ def _apply_action(state: LaundromatState, action: Action):
                 game.engine.time_system.current_week
             )
             # Increased boost from cost/50 to cost/20 for better impact
-            boost = cost / 20.0
+            boost = cost / settings.economy.marketing_cost_divisor
             state.update_social_score("community_standing", boost)
             state.marketing_boost += boost
     
     elif action.type == ActionType.HIRE_STAFF:
         # Basic hiring logic
-        cost = action.parameters.get("cost", 100) # Hiring fee
+        cost = action.parameters.get("cost", settings.economy.hiring_cost) # Hiring fee
         role = action.parameters.get("role", "General Staff")
         
         if state.balance >= cost:
@@ -320,7 +320,7 @@ def _apply_action(state: LaundromatState, action: Action):
                 role=role,
                 skill_level=random.uniform(3.0, 7.0),
                 morale=80.0,
-                wage=300.0 # Standard weekly wage
+                wage=settings.economy.staff_weekly_wage_default # Standard weekly wage
             )
             
             # Ensure staff list exists
@@ -385,7 +385,7 @@ def _apply_action(state: LaundromatState, action: Action):
 
     elif action.type == ActionType.TRAIN_STAFF:
         staff_id = action.parameters.get("staff_id")
-        program_cost = action.parameters.get("cost", 150)
+        program_cost = action.parameters.get("cost", settings.economy.staff_training_cost)
         
         staff_member = next((s for s in state.staff if s.id == staff_id), None)
         

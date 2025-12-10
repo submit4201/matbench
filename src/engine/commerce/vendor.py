@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 import math
 from src.models.commerce import VendorTier, SupplyOffer, VendorProfile, SupplyChainEventType
 from .supply import SupplyChainManager
+from src.config import settings
 
 class Vendor:
     def __init__(self, profile: VendorProfile):
@@ -48,13 +49,13 @@ class Vendor:
         
         for item in self.profile.base_prices:
             # Fluctuate
-            change = random.uniform(-volatility, volatility) * 0.2
+            change = random.uniform(-volatility, volatility) * settings.vendor.price_fluctuation_rate
             self.current_multipliers[item] = max(0.5, min(2.0, 1.0 + change))
         
         # Occasional special offer
-        if random.random() < 0.2:
+        if random.random() < settings.vendor.special_offer_chance:
             item = random.choice(list(self.profile.base_prices.keys()))
-            discount = 0.8  # 20% off default
+            discount = settings.vendor.special_offer_discount_base  # Default discount base
             
             # Better tiers get better offers
             if self.tier == VendorTier.PREFERRED:
@@ -125,7 +126,7 @@ class Vendor:
                 self.negotiated_discounts[agent_id] = {}
             
             current_discount = self.negotiated_discounts[agent_id].get(item, 1.0)
-            new_discount = max(0.7, current_discount - 0.05) # Max 30% off total, 5% steps
+            new_discount = max(1.0 - settings.vendor.negotiation_max_discount, current_discount - settings.vendor.negotiation_discount_step)
             self.negotiated_discounts[agent_id][item] = new_discount
             
             message = f"Agreed. We value your business, {agent_name}. We can offer you a {int((1-new_discount)*100)}% discount on {item}."

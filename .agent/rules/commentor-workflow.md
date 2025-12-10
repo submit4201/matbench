@@ -1,7 +1,6 @@
 ---
-trigger: always_on
+trigger: manual
 ---
-
 
 🛠️ Agent Review Workflow (Markdown)
 🔹 Purpose

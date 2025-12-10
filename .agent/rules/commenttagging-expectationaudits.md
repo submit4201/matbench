@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: manual
 ---
 
 Tagging schema for agent workflows
@@ -72,5 +72,3 @@ Tag catalog and intent mapping
 - EXPECT: System expectation vs. actual implementation alignment; bridges specs and code reality.
 - DOC: Documentation improvements; reference updates, ADRs, changelogs, inline comments, and diagrams.
 Each tag uses the same metadata fields for consistency and dashboard parsing.
-
-

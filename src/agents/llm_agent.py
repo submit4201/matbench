@@ -9,6 +9,7 @@ import json
 import os
 from typing import Dict, Any, List, Optional
 from src.agents.base_agent import BaseAgent, Observation, Action, ActionType
+from src.config import settings
 from src.config import LLMDICT
 from dotenv import load_dotenv
 
@@ -22,14 +23,8 @@ from src.agents.providers.factory import LLMProviderFactory
 # Load environment variables
 load_dotenv()
 
-# Import extended tools (legacy/extended integration)
-from src.agents.extended_tools import EXTENDED_TOOLS, EXTENDED_FUNCTION_TO_ACTION, map_extended_function_args
-
 # --- Initialize Tools from Registry ---
-# Note: merging standard registry tools with extended tools if needed
-standard_tools = ToolRegistry.get_all_tools()
-# For now, we append EXTENDED_TOOLS to the registry based list
-TOOLS = standard_tools + EXTENDED_TOOLS
+TOOLS = ToolRegistry.get_all_tools()
 
 # Mapping from function names to ActionType
 FUNCTION_TO_ACTION = {
@@ -43,11 +38,22 @@ FUNCTION_TO_ACTION = {
     "initiate_buyout": ActionType.INITIATE_BUYOUT,
     "negotiate": ActionType.NEGOTIATE,
     "wait": ActionType.WAIT,
-}
+    
+    # Extended Tools
+    "make_payment": ActionType.MAKE_PAYMENT,
+    "apply_for_loan": ActionType.APPLY_FOR_LOAN,
+    "schedule_action": ActionType.SCHEDULE_ACTION,
+    "send_dm": ActionType.SEND_DM,
+    "send_public": ActionType.SEND_PUBLIC,
+    "send_formal": ActionType.SEND_FORMAL,
+    "resolve_dilemma": ActionType.RESOLVE_DILEMMA,
 
-# Extend with new tools for credit, calendar, communication, ethics
-FUNCTION_TO_ACTION.update(EXTENDED_FUNCTION_TO_ACTION)
-FUNCTION_TO_ACTION.update(EXTENDED_FUNCTION_TO_ACTION)
+    # Active Perception
+    "inspect_competitor": ActionType.INSPECT_COMPETITOR,
+    "check_market_trends": ActionType.CHECK_MARKET_TRENDS,
+    "read_news": ActionType.READ_NEWS,
+    "inspect_facility": ActionType.INSPECT_FACILITY,
+}
 
 from src.utils.logger import get_logger, get_llm_trace_logger
 
@@ -56,9 +62,9 @@ from src.utils.logger import get_logger, get_llm_trace_logger
 class LLMAgent(BaseAgent):
     """AI Agent that uses LLMs with function calling for structured output"""
     
-    def __init__(self, agent_id: str, name: str, model: str = "gemini-1.5-flash", llm_provider: str = "AZURE"):
+    def __init__(self, agent_id: str, name: str, model: str = None, llm_provider: str = "AZURE"):
         super().__init__(agent_id, name)
-        self.model = model
+        self.model = model or settings.simulation.agent_default_model
         self.llm_provider = llm_provider
         self.history = []  # Conversation history
         self.memory = "No past memory yet."  # Evolving memory note
@@ -187,7 +193,49 @@ class LLMAgent(BaseAgent):
                     # Break the tool loop, then will break the main loop
                     break
                     
-                # Handle Game Actions
+                # Handle Meta Tools (Immediate Feedback)
+                if func_name == "get_tool_help":
+                    tool_name = func_args.get("tool_name")
+                    tool_def = ToolRegistry.get_tool(tool_name)
+                    feedback = f"Documentation for {tool_name}: {json.dumps(tool_def, indent=2)}" if tool_def else f"Tool {tool_name} not found."
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": func_name, 
+                        "content": feedback
+                    })
+                    continue
+
+                # Handle Immediate Perception Tools (Mocking data from Observation if possible or generic response)
+                # Ideally, we should parse the Observation to answer these, or the Engine should process them.
+                # Since LLMAgent is decoupled, we'll queue them as Actions if they need Engine data not in Observation,
+                # BUT 'inspect_competitor' needs data NOW.
+                # Hack: We look at 'observation.competitor_stats' for inspect_competitor.
+                if func_name == "inspect_competitor":
+                    comp_id = func_args.get("competitor_id")
+                    # Find in observation
+                    comp_data = next((c for c in observation.competitor_stats if c.get('id') == comp_id or c.get('name') == comp_id), None)
+                    feedback = f"Competitor Data: {json.dumps(comp_data, indent=2)}" if comp_data else "Competitor not found in recent observation."
+                    messages.append({
+                        "role": "tool", 
+                        "tool_call_id": tool_call.id,
+                        "name": func_name,
+                        "content": feedback
+                    })
+                    continue
+
+                if func_name == "read_news":
+                    # Mock response for now as parsing Observation events is complex
+                    feedback = f"Recent Events: {json.dumps(observation.events, indent=2)}"
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": func_name,
+                        "content": feedback
+                    })
+                    continue
+                    
+                # Handle Game Actions (Deferred)
                 action = self._parse_single_tool(func_name, func_args)
                 if action:
                     actions_to_return.append(action)
@@ -224,12 +272,12 @@ class LLMAgent(BaseAgent):
         request_params = {
             "model": model_name,
             "messages": messages,
-            "max_completion_tokens": 1000
+            "max_completion_tokens": settings.simulation.agent_max_tokens
         }
         
         if not is_o_series:
             request_params["tools"] = TOOLS
-            request_params["temperature"] = 0.7
+            request_params["temperature"] = settings.simulation.agent_temperature
         
         # TRACE LOG PROMPT
         self.trace_logger.debug(f"\n[{self.name}] >>> SENT TO LLM ({model_name}):\n{json.dumps(messages, indent=2, default=str)}")
@@ -257,34 +305,23 @@ class LLMAgent(BaseAgent):
 
     def _parse_single_tool(self, func_name: str, args: Dict) -> Optional[Action]:
         """Convert a single tool call to an Action object"""
-        
-        # Handle Extended Tools first (to support new features)
-        from src.agents.extended_tools import EXTENDED_FUNCTION_TO_ACTION, map_extended_function_args
-        if func_name in EXTENDED_FUNCTION_TO_ACTION:
-             try:
-                 params = map_extended_function_args(func_name, args)
-                 return Action(type=EXTENDED_FUNCTION_TO_ACTION[func_name], parameters=params)
-             except Exception as e:
-                 print(f"Error mapping extended tool {func_name}: {e}")
-                 return None
 
-        # Standard Tools Mapping
         if func_name == "set_price":
-            return Action(type=ActionType.SET_PRICE, parameters={"price": args.get("price", 5.0)})
+            return Action(type=ActionType.SET_PRICE, parameters={"price": args.get("price", settings.economy.default_price)})
         
         elif func_name == "buy_supplies":
-            # Simplified mapping logic
-            params = {}
-            for k, v in args.items():
-                if v and v > 0:
-                    # simplistic mapping, assuming args match inventory keys for now
-                    # or relying on default behavior if needed
-                    # ideally we keep the robust mapping from before, let's simplify for now
-                    # and assume 'item' logic is handled by standardizing the tool output
-                    # or the server handles partial args. 
-                    # Actually, let's keep it simple:
-                    if k in ["soap", "softener", "parts", "cleaning_supplies"]:
-                        return Action(type=ActionType.BUY_SUPPLIES, parameters={"item": k, "quantity": v})
+            # Handle multiple supplies by picking the first valid one found in args 
+            # (since we return single Action, loop wrapper should ideally handle multiple actions but tool calls are list already)
+            # If the LLM sends one tool call with {"soap": 5, "softener": 2}, we can only return one ActionType.BUY_SUPPLIES here?
+            # Actually, `decide_action` iterates `tool_calls`. If LLM sends one tool call with multiple params, we might lose data if we only return one.
+            # But `BUY_SUPPLIES` generic action usually expects `item` and `quantity`.
+            # Let's fix this properly: ActionType.BUY_SUPPLIES could support a dict of items?
+            # Engine `_apply_action` (lines 280-335) expects single "item" and "quantity".
+            # So we MUST return single item. 
+            # If LLM combines them, we just pick one. Ideally LLM should make disparate tool calls for each item.
+            for k in ["soap", "softener", "parts", "cleaning_supplies"]:
+                if k in args and args[k] > 0:
+                    return Action(type=ActionType.BUY_SUPPLIES, parameters={"item": k, "quantity": args[k]})
             # Fallback
             return Action(type=ActionType.BUY_SUPPLIES, parameters={"item": "soap", "quantity": 10})
             
@@ -292,13 +329,141 @@ class LLMAgent(BaseAgent):
             return Action(type=ActionType.MARKETING_CAMPAIGN, parameters={"cost": args.get("cost", 100)})
             
         elif func_name == "upgrade_machine":
-            return Action(type=ActionType.UPGRADE_MACHINE, parameters={"count": args.get("count", 1)})
+            return Action(type=ActionType.UPGRADE_MACHINE, parameters={
+                "count": args.get("count", 1), 
+                "type": args.get("machine_type", "standard")
+            })
         
         elif func_name == "wait":
              return Action(type=ActionType.WAIT)
              
+        # Extended Tools
+        elif func_name == "make_payment":
+            return Action(type=ActionType.MAKE_PAYMENT, parameters={
+                "payment_id": args.get("payment_id", ""),
+                "amount": float(args.get("amount", 0))
+            })
+        
+        elif func_name == "apply_for_loan":
+            return Action(type=ActionType.APPLY_FOR_LOAN, parameters={
+                "loan_type": args.get("loan_type", "equipment_loan"),
+                "amount": float(args.get("amount", 1000))
+            })
+
+        elif func_name == "schedule_action":
+            return Action(type=ActionType.SCHEDULE_ACTION, parameters={
+                "category": args.get("category", "custom"),
+                "title": args.get("title", "Scheduled Task"),
+                "week": int(args.get("week", 1)),
+                "day": int(args.get("day", 1)),
+                "priority": args.get("priority", "medium"),
+                "is_recurring": args.get("is_recurring", False)
+            })
+
+        elif func_name == "send_dm":
+             return Action(type=ActionType.SEND_DM, parameters={
+                "recipient_id": args.get("recipient_id", ""),
+                "content": args.get("content", ""),
+                "intent": args.get("intent", "chat")
+             })
+
+        elif func_name == "send_public":
+             return Action(type=ActionType.SEND_PUBLIC, parameters={
+                 "content": args.get("content", ""),
+                 "intent": args.get("intent", "announcement")
+             })
+
+        elif func_name == "send_formal":
+             return Action(type=ActionType.SEND_FORMAL, parameters={
+                 "recipient_id": args.get("recipient_id", ""),
+                 "content": args.get("content", ""),
+                 "intent": args.get("intent", "proposal")
+             })
+
+        elif func_name == "resolve_dilemma":
+             return Action(type=ActionType.RESOLVE_DILEMMA, parameters={
+                 "dilemma_id": args.get("dilemma_id", ""),
+                 "choice_id": args.get("choice_id", ""),
+                 "reasoning": args.get("reasoning", "")
+             })
+
+        # Active Perception
+        elif func_name == "inspect_competitor":
+             return Action(type=ActionType.INSPECT_COMPETITOR, parameters={
+                 "competitor_id": args.get("competitor_id", "")
+             })
+
+        elif func_name == "check_market_trends":
+             return Action(type=ActionType.CHECK_MARKET_TRENDS, parameters={})
+
+        elif func_name == "read_news":
+             return Action(type=ActionType.READ_NEWS, parameters={})
+
+        elif func_name == "inspect_facility":
+             return Action(type=ActionType.INSPECT_FACILITY, parameters={})
+
+        # Staff
+        elif func_name == "hire_staff":
+            return Action(type=ActionType.HIRE_STAFF, parameters={
+                "role": args.get("role", "attendant")
+            })
+
+        elif func_name == "fire_staff":
+            return Action(type=ActionType.FIRE_STAFF, parameters={
+                "staff_id": args.get("staff_id", "")
+            })
+
+        elif func_name == "train_staff":
+            return Action(type=ActionType.TRAIN_STAFF, parameters={
+                "staff_id": args.get("staff_id", "")
+            })
+
+        # Maintenance
+        elif func_name == "perform_maintenance":
+            return Action(type=ActionType.PERFORM_MAINTENANCE, parameters={})
+
+        # Vendor/Logistics
+        elif func_name == "inspect_vendor":
+            return Action(type=ActionType.INSPECT_VENDOR, parameters={
+                "vendor_id": args.get("vendor_id", "")
+            })
+
+        elif func_name == "negotiate_contract":
+            return Action(type=ActionType.NEGOTIATE_CONTRACT, parameters={
+                "vendor_id": args.get("vendor_id", ""),
+                "item": args.get("item", "soap")
+            })
+
+        elif func_name == "inspect_deliveries":
+            return Action(type=ActionType.INSPECT_DELIVERIES, parameters={})
+
+        elif func_name == "get_financial_report":
+            return Action(type=ActionType.GET_FINANCIAL_REPORT, parameters={})
+
+        elif func_name == "check_credit_score":
+            return Action(type=ActionType.CHECK_CREDIT_SCORE, parameters={})
+
+        elif func_name == "check_market_trends":
+            return Action(type=ActionType.CHECK_MARKET_TRENDS, parameters={})
+
+        # Final Gaps
+        elif func_name == "emergency_repair":
+            return Action(type=ActionType.EMERGENCY_REPAIR, parameters={
+                "machine_id": args.get("machine_id", "")
+            })
+
+        elif func_name == "check_regulatory_requirements":
+            return Action(type=ActionType.CHECK_REGULATIONS, parameters={})
+
+        elif func_name == "check_reputation_score":
+            return Action(type=ActionType.CHECK_REPUTATION, parameters={})
+            
+        elif func_name == "inspect_public_records":
+            return Action(type=ActionType.INSPECT_PUBLIC_RECORDS, parameters={
+                "entity_id": args.get("entity_id", "")
+            })
+
         elif func_name in FUNCTION_TO_ACTION:
-             # Catch-all for simple tools
              return Action(type=FUNCTION_TO_ACTION[func_name], parameters=args)
              
         return None

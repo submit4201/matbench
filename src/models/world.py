@@ -1,8 +1,9 @@
-from typing import List, Dict, Optional, Any
-from pydantic import Field, PrivateAttr, model_validator
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field, PrivateAttr
+from src.config import settings
+from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, Bill, FinancialReport, TransactionCategory
 from src.models.base import GameModel
-from src.models.financial import FinancialLedger, RevenueStream, Loan, FinancialReport, TransactionCategory
-from src.models.social import SocialScore, Ticket
+from src.models.social import SocialScore
 
 class Machine(GameModel):
     id: str
@@ -43,7 +44,7 @@ class LaundromatState(GameModel):
     # Social Score (Pydantic model with computed properties)
     social_score: SocialScore = Field(default_factory=SocialScore)
     
-    price: float = 5.0
+    price: float = settings.economy.default_price
     
     # Real Estate
     buildings: List[Building] = Field(default_factory=list)
@@ -103,7 +104,7 @@ class LaundromatState(GameModel):
         
         # Seed initial capital if ledger is empty
         if not self.ledger.transactions:
-             self.ledger.add(2500.0, TransactionCategory.CAPITAL, "Initial Capital", week=0)
+             self.ledger.add(settings.economy.initial_balance, TransactionCategory.CAPITAL, "Initial Capital", week=0)
 
         # Initialize default building if none
         if not self.buildings:
@@ -209,17 +210,17 @@ class LaundromatState(GameModel):
         
         # Decay marketing boost naturally over time
         if self.marketing_boost > 0:
-            decay = 5.0
+            decay = settings.economy.marketing_decay_rate
             self.marketing_boost = max(0, self.marketing_boost - decay)
             
         # Machine wear and tear
         for machine in self.machines:
             if not machine.is_broken:
-                machine.condition = max(0, machine.condition - 0.01)
+                machine.condition = max(0, machine.condition - settings.simulation.machine_wear_rate)
                 machine.age_weeks += 1
-                if machine.condition < 0.2:
+                if machine.condition < settings.simulation.machine_breakdown_threshold:
                     import random
-                    if random.random() < 0.3:
+                    if random.random() < settings.simulation.machine_breakdown_chance:
                         machine.is_broken = True
 
     def add_funds(self, amount: float, category: str, description: str, week: int):

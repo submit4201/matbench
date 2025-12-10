@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: manual
 ---
 
 : Refactoring (REF)
@@ -89,5 +89,3 @@ Rules
 - Single source of truth: Contracts live in a versioned spec; code generation preferred.
 - Compatibility policy: Minor changes backward-compatible; major changes gated and versioned.
 - Acceptance criteria: Explicit, testable, and linked to FEAT or REF ids.
-
-
