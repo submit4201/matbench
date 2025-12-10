@@ -48,7 +48,7 @@ master rules
 7. always create TASK artifacts for your sprints make them as granular as possible
 8. if in question ask 
 
-9. NEVER MERGE _ OR PUSH YOUR QORK TO A MAIN OR MASTER BRANCH you may create a request and you can make a new branch for your work but any new mergeing to main or master requires a code review
+9. NEVER MERGE _ OR PUSH YOUR WORK TO A MAIN OR MASTER BRANCH you may create a request and you can make a new branch for your work but any new mergeing to main or master requires a code review
 <|-STOP AND CONSIDER HAVE YOU COMMITED - PUSHED - TAGGED - BRANCHED - MERGED - YOUR WORK TO GITHUB? IF NOT DO IT NOW|>
 . The Golden Rule: "Type / ID / Description"
 The most effective structure uses forward slashes. Many Git tools (like SourceTree, GitKraken, or GitHub Desktop) will actually group these into "folders" visually, which helps immensely with organization.
