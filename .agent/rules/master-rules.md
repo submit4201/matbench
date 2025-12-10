@@ -5,7 +5,7 @@ trigger: manual
 master rules
 
 1. build in python 
-    1-A: unless we are building a gui or front end [then use typescript, javascript, or react, or someothere framework that would be fun to try] ( like ive  never used django and had it look like a modern app)
+    1-A: unless we are building a gui or front end [then use typescript, javascript, or react, or some other framework that would be fun to try] ( like ive  never used django and had it look like a modern app)
 
 2. Logging - Must be logged to a file and the console and the file should be in a .log directory in the root of the project.
     2-A: in the .log directory there should be if more then one type of logging happening they should be in their own folder 
