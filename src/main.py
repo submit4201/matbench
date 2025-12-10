@@ -3,15 +3,15 @@ import os
 import json
 sys.path.append(os.getcwd())
 
-from src.engine.time import TimeSystem
-from src.engine.customer import Customer
+from src.engine.core.time import TimeSystem
+from src.engine.population.customer import Customer
 from src.world.laundromat import LaundromatState
 import random
 
 from src.agents.base_agent import Observation, ActionType, Message
 from src.agents.human_agent import HumanAgent
 from src.agents.llm_agent import LLMAgent
-from src.engine.events import EventManager
+from src.engine.core.events import EventManager
 from src.engine.llm_npc_factory import NPCFactory
 from src.world.ticket import TicketStatus
 
@@ -41,8 +41,8 @@ def main():
     # p1 is Human, p2 and p3 are LLMs
     agents = [
         HumanAgent("p1", "Human Player"),
-        LLMAgent("p2", "Cheap AI", model="gpt-3.5-turbo"),
-        LLMAgent("p3", "Luxury AI", model="gpt-4")
+        LLMAgent("p2", "Cheap AI", model="gemini-1.5-flash"),
+        LLMAgent("p3", "Luxury AI", model="gemini-1.5-flash")
     ]
     
     # 3. Setup Customers from NPCFactory

@@ -1,0 +1,1716 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "Building": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "default": "storefront",
+          "title": "Type",
+          "type": "string"
+        },
+        "condition": {
+          "default": 1.0,
+          "title": "Condition",
+          "type": "number"
+        },
+        "capacity_machines": {
+          "default": 20,
+          "title": "Capacity Machines",
+          "type": "integer"
+        },
+        "location_multiplier": {
+          "default": 1.0,
+          "title": "Location Multiplier",
+          "type": "number"
+        },
+        "price": {
+          "default": 0.0,
+          "title": "Price",
+          "type": "number"
+        },
+        "rent": {
+          "default": 0.0,
+          "title": "Rent",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Building",
+      "type": "object"
+    },
+    "FinancialLedger": {
+      "properties": {
+        "transactions": {
+          "items": {
+            "$ref": "#/$defs/Transaction"
+          },
+          "title": "Transactions",
+          "type": "array"
+        }
+      },
+      "title": "FinancialLedger",
+      "type": "object"
+    },
+    "FinancialReport": {
+      "properties": {
+        "week": {
+          "title": "Week",
+          "type": "integer"
+        },
+        "revenue_wash": {
+          "default": 0.0,
+          "title": "Revenue Wash",
+          "type": "number"
+        },
+        "revenue_dry": {
+          "default": 0.0,
+          "title": "Revenue Dry",
+          "type": "number"
+        },
+        "revenue_vending": {
+          "default": 0.0,
+          "title": "Revenue Vending",
+          "type": "number"
+        },
+        "revenue_premium": {
+          "default": 0.0,
+          "title": "Revenue Premium",
+          "type": "number"
+        },
+        "revenue_membership": {
+          "default": 0.0,
+          "title": "Revenue Membership",
+          "type": "number"
+        },
+        "revenue_other": {
+          "default": 0.0,
+          "title": "Revenue Other",
+          "type": "number"
+        },
+        "total_revenue": {
+          "default": 0.0,
+          "title": "Total Revenue",
+          "type": "number"
+        },
+        "cogs_supplies": {
+          "default": 0.0,
+          "title": "Cogs Supplies",
+          "type": "number"
+        },
+        "cogs_vending": {
+          "default": 0.0,
+          "title": "Cogs Vending",
+          "type": "number"
+        },
+        "total_cogs": {
+          "default": 0.0,
+          "title": "Total Cogs",
+          "type": "number"
+        },
+        "gross_profit": {
+          "default": 0.0,
+          "title": "Gross Profit",
+          "type": "number"
+        },
+        "expense_rent": {
+          "default": 0.0,
+          "title": "Expense Rent",
+          "type": "number"
+        },
+        "expense_utilities": {
+          "default": 0.0,
+          "title": "Expense Utilities",
+          "type": "number"
+        },
+        "expense_labor": {
+          "default": 0.0,
+          "title": "Expense Labor",
+          "type": "number"
+        },
+        "expense_maintenance": {
+          "default": 0.0,
+          "title": "Expense Maintenance",
+          "type": "number"
+        },
+        "expense_marketing": {
+          "default": 0.0,
+          "title": "Expense Marketing",
+          "type": "number"
+        },
+        "expense_insurance": {
+          "default": 0.0,
+          "title": "Expense Insurance",
+          "type": "number"
+        },
+        "expense_other": {
+          "default": 0.0,
+          "title": "Expense Other",
+          "type": "number"
+        },
+        "total_operating_expenses": {
+          "default": 0.0,
+          "title": "Total Operating Expenses",
+          "type": "number"
+        },
+        "operating_income": {
+          "default": 0.0,
+          "title": "Operating Income",
+          "type": "number"
+        },
+        "income_interest": {
+          "default": 0.0,
+          "title": "Income Interest",
+          "type": "number"
+        },
+        "expense_interest": {
+          "default": 0.0,
+          "title": "Expense Interest",
+          "type": "number"
+        },
+        "fines": {
+          "default": 0.0,
+          "title": "Fines",
+          "type": "number"
+        },
+        "net_income_before_tax": {
+          "default": 0.0,
+          "title": "Net Income Before Tax",
+          "type": "number"
+        },
+        "tax_provision": {
+          "default": 0.0,
+          "title": "Tax Provision",
+          "type": "number"
+        },
+        "net_income": {
+          "default": 0.0,
+          "title": "Net Income",
+          "type": "number"
+        },
+        "cash_beginning": {
+          "default": 0.0,
+          "title": "Cash Beginning",
+          "type": "number"
+        },
+        "cash_ending": {
+          "default": 0.0,
+          "title": "Cash Ending",
+          "type": "number"
+        }
+      },
+      "required": [
+        "week"
+      ],
+      "title": "FinancialReport",
+      "type": "object"
+    },
+    "Loan": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "principal": {
+          "title": "Principal",
+          "type": "number"
+        },
+        "balance": {
+          "title": "Balance",
+          "type": "number"
+        },
+        "interest_rate_monthly": {
+          "title": "Interest Rate Monthly",
+          "type": "number"
+        },
+        "term_weeks": {
+          "title": "Term Weeks",
+          "type": "integer"
+        },
+        "weeks_remaining": {
+          "title": "Weeks Remaining",
+          "type": "integer"
+        },
+        "weekly_payment": {
+          "title": "Weekly Payment",
+          "type": "number"
+        },
+        "is_defaulted": {
+          "default": false,
+          "title": "Is Defaulted",
+          "type": "boolean"
+        },
+        "missed_payments": {
+          "default": 0,
+          "title": "Missed Payments",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "principal",
+        "balance",
+        "interest_rate_monthly",
+        "term_weeks",
+        "weeks_remaining",
+        "weekly_payment"
+      ],
+      "title": "Loan",
+      "type": "object"
+    },
+    "Machine": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "default": "standard_washer",
+          "title": "Type",
+          "type": "string"
+        },
+        "condition": {
+          "default": 1.0,
+          "title": "Condition",
+          "type": "number"
+        },
+        "is_broken": {
+          "default": false,
+          "title": "Is Broken",
+          "type": "boolean"
+        },
+        "age_weeks": {
+          "default": 0,
+          "title": "Age Weeks",
+          "type": "integer"
+        },
+        "location_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location Id"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "Machine",
+      "type": "object"
+    },
+    "RevenueStream": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "price": {
+          "title": "Price",
+          "type": "number"
+        },
+        "cost_per_unit": {
+          "default": 0.0,
+          "title": "Cost Per Unit",
+          "type": "number"
+        },
+        "demand_multiplier": {
+          "default": 1.0,
+          "title": "Demand Multiplier",
+          "type": "number"
+        },
+        "unlocked": {
+          "default": false,
+          "title": "Unlocked",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "weekly_revenue": {
+          "default": 0.0,
+          "title": "Weekly Revenue",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "category",
+        "price"
+      ],
+      "title": "RevenueStream",
+      "type": "object"
+    },
+    "SocialScore": {
+      "description": "Social reputation score with five weighted components.\n\nTotal score is computed from weighted components.\nTier is derived from total score thresholds.",
+      "properties": {
+        "customer_satisfaction": {
+          "default": 50.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Customer Satisfaction",
+          "type": "number"
+        },
+        "community_standing": {
+          "default": 50.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Community Standing",
+          "type": "number"
+        },
+        "ethical_conduct": {
+          "default": 50.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Ethical Conduct",
+          "type": "number"
+        },
+        "employee_relations": {
+          "default": 50.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Employee Relations",
+          "type": "number"
+        },
+        "environmental_responsibility": {
+          "default": 50.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Environmental Responsibility",
+          "type": "number"
+        }
+      },
+      "title": "SocialScore",
+      "type": "object"
+    },
+    "StaffMember": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "attendant",
+          "title": "Role",
+          "type": "string"
+        },
+        "skill_level": {
+          "default": 0.5,
+          "title": "Skill Level",
+          "type": "number"
+        },
+        "morale": {
+          "default": 0.8,
+          "title": "Morale",
+          "type": "number"
+        },
+        "wage": {
+          "default": 15.0,
+          "title": "Wage",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "StaffMember",
+      "type": "object"
+    },
+    "Ticket": {
+      "description": "Customer complaint/support ticket.\n\nPure data model for tracking customer issues.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/TicketType"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "customer_id": {
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "laundromat_id": {
+          "title": "Laundromat Id",
+          "type": "string"
+        },
+        "created_week": {
+          "title": "Created Week",
+          "type": "integer"
+        },
+        "severity": {
+          "default": "medium",
+          "title": "Severity",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TicketStatus",
+          "default": "open"
+        },
+        "resolution_week": {
+          "default": -1,
+          "title": "Resolution Week",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "description",
+        "customer_id",
+        "laundromat_id",
+        "created_week"
+      ],
+      "title": "Ticket",
+      "type": "object"
+    },
+    "TicketStatus": {
+      "description": "Status of a support ticket.",
+      "enum": [
+        "open",
+        "resolved",
+        "expired"
+      ],
+      "title": "TicketStatus",
+      "type": "string"
+    },
+    "TicketType": {
+      "description": "Types of customer complaint tickets.",
+      "enum": [
+        "out_of_soap",
+        "machine_broken",
+        "dirty_floor",
+        "long_wait",
+        "other"
+      ],
+      "title": "TicketType",
+      "type": "string"
+    },
+    "Transaction": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "amount": {
+          "title": "Amount",
+          "type": "number"
+        },
+        "category": {
+          "$ref": "#/$defs/TransactionCategory"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "week": {
+          "title": "Week",
+          "type": "integer"
+        },
+        "related_entity_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Related Entity Id"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "category",
+        "description",
+        "week"
+      ],
+      "title": "Transaction",
+      "type": "object"
+    },
+    "TransactionCategory": {
+      "description": "Categories for ledger transactions.",
+      "enum": [
+        "revenue",
+        "expense",
+        "loan",
+        "repayment",
+        "tax",
+        "adjustment",
+        "grant",
+        "capital",
+        "transfer",
+        "real_estate"
+      ],
+      "title": "TransactionCategory",
+      "type": "string"
+    },
+    "LaundromatState": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "ledger": {
+          "$ref": "#/$defs/FinancialLedger"
+        },
+        "social_score": {
+          "$ref": "#/$defs/SocialScore"
+        },
+        "price": {
+          "default": 5.0,
+          "title": "Price",
+          "type": "number"
+        },
+        "buildings": {
+          "items": {
+            "$ref": "#/$defs/Building"
+          },
+          "title": "Buildings",
+          "type": "array"
+        },
+        "locations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Locations",
+          "type": "array"
+        },
+        "machines": {
+          "items": {
+            "$ref": "#/$defs/Machine"
+          },
+          "title": "Machines",
+          "type": "array"
+        },
+        "staff": {
+          "items": {
+            "$ref": "#/$defs/StaffMember"
+          },
+          "title": "Staff",
+          "type": "array"
+        },
+        "inventory": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Inventory",
+          "type": "object"
+        },
+        "marketing_boost": {
+          "default": 0.0,
+          "title": "Marketing Boost",
+          "type": "number"
+        },
+        "cleanliness": {
+          "default": 0.8,
+          "title": "Cleanliness",
+          "type": "number"
+        },
+        "security_level": {
+          "default": 0.5,
+          "title": "Security Level",
+          "type": "number"
+        },
+        "avg_daily_burn_rate": {
+          "default": 20.0,
+          "title": "Avg Daily Burn Rate",
+          "type": "number"
+        },
+        "active_customers": {
+          "default": 0,
+          "title": "Active Customers",
+          "type": "integer"
+        },
+        "revenue_streams": {
+          "additionalProperties": {
+            "$ref": "#/$defs/RevenueStream"
+          },
+          "title": "Revenue Streams",
+          "type": "object"
+        },
+        "loans": {
+          "items": {
+            "$ref": "#/$defs/Loan"
+          },
+          "title": "Loans",
+          "type": "array"
+        },
+        "financial_reports": {
+          "items": {
+            "$ref": "#/$defs/FinancialReport"
+          },
+          "title": "Financial Reports",
+          "type": "array"
+        },
+        "pending_deliveries": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Pending Deliveries",
+          "type": "array"
+        },
+        "history": {
+          "additionalProperties": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "History",
+          "type": "object"
+        },
+        "tickets": {
+          "items": {
+            "$ref": "#/$defs/Ticket"
+          },
+          "title": "Tickets",
+          "type": "array"
+        },
+        "active_events": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Active Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "id"
+      ],
+      "title": "LaundromatState",
+      "type": "object"
+    },
+    "Bill": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "amount": {
+          "title": "Amount",
+          "type": "number"
+        },
+        "due_week": {
+          "title": "Due Week",
+          "type": "integer"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "recipient_id": {
+          "default": "system",
+          "title": "Recipient Id",
+          "type": "string"
+        },
+        "is_paid": {
+          "default": false,
+          "title": "Is Paid",
+          "type": "boolean"
+        },
+        "generated_week": {
+          "default": 0,
+          "title": "Generated Week",
+          "type": "integer"
+        },
+        "penalty_applied": {
+          "default": false,
+          "title": "Penalty Applied",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "amount",
+        "due_week",
+        "category"
+      ],
+      "title": "Bill",
+      "type": "object"
+    },
+    "Message": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "sender_id": {
+          "title": "Sender Id",
+          "type": "string"
+        },
+        "recipient_id": {
+          "title": "Recipient Id",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "week": {
+          "title": "Week",
+          "type": "integer"
+        },
+        "day": {
+          "default": "MONDAY",
+          "title": "Day",
+          "type": "string"
+        },
+        "intent": {
+          "default": "general",
+          "title": "Intent",
+          "type": "string"
+        },
+        "read_by": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Read By",
+          "type": "array"
+        },
+        "attachments": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Attachments",
+          "type": "array"
+        },
+        "channel": {
+          "default": "direct",
+          "title": "Channel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sender_id",
+        "recipient_id",
+        "content",
+        "week"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "Observation": {
+      "properties": {
+        "week": {
+          "title": "Week",
+          "type": "integer"
+        },
+        "day": {
+          "title": "Day",
+          "type": "string"
+        },
+        "phase": {
+          "title": "Phase",
+          "type": "string"
+        },
+        "season": {
+          "title": "Season",
+          "type": "string"
+        },
+        "my_stats": {
+          "additionalProperties": true,
+          "title": "My Stats",
+          "type": "object"
+        },
+        "competitor_stats": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Competitor Stats",
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "events": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "alliances": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Alliances",
+          "type": "array"
+        },
+        "trust_scores": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Trust Scores",
+          "type": "object"
+        },
+        "market_data": {
+          "additionalProperties": true,
+          "title": "Market Data",
+          "type": "object"
+        },
+        "credit_info": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credit Info"
+        },
+        "zone_info": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Zone Info"
+        },
+        "calendar_info": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calendar Info"
+        },
+        "ethical_dilemma": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ethical Dilemma"
+        }
+      },
+      "required": [
+        "week",
+        "day",
+        "phase",
+        "season",
+        "my_stats",
+        "competitor_stats"
+      ],
+      "title": "Observation",
+      "type": "object"
+    },
+    "Action": {
+      "properties": {
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "VendorProfile": {
+      "description": "Static profile data for a vendor.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slogan": {
+          "title": "Slogan",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "base_prices": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Base Prices",
+          "type": "object"
+        },
+        "reliability": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Reliability",
+          "type": "number"
+        },
+        "sustainability": {
+          "title": "Sustainability",
+          "type": "number"
+        },
+        "min_order": {
+          "title": "Min Order",
+          "type": "integer"
+        },
+        "delivery_days": {
+          "title": "Delivery Days",
+          "type": "integer"
+        },
+        "payment_terms": {
+          "title": "Payment Terms",
+          "type": "string"
+        },
+        "special_features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Special Features",
+          "type": "array"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slogan",
+        "description",
+        "base_prices",
+        "reliability",
+        "sustainability",
+        "min_order",
+        "delivery_days",
+        "payment_terms",
+        "special_features"
+      ],
+      "title": "VendorProfile",
+      "type": "object"
+    },
+    "SupplyOffer": {
+      "description": "Special offer from a vendor.",
+      "properties": {
+        "item_name": {
+          "title": "Item Name",
+          "type": "string"
+        },
+        "price": {
+          "title": "Price",
+          "type": "number"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "min_quantity": {
+          "default": 1,
+          "title": "Min Quantity",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "item_name",
+        "price",
+        "description"
+      ],
+      "title": "SupplyOffer",
+      "type": "object"
+    },
+    "SupplyChainEventType": {
+      "description": "Types of supply chain events.",
+      "enum": [
+        "delivery_delay_minor",
+        "delivery_delay_major",
+        "partial_shipment",
+        "quality_issue_minor",
+        "quality_issue_major",
+        "price_fluctuation",
+        "lost_shipment",
+        "vendor_shortage",
+        "price_spike",
+        "vendor_bankruptcy",
+        "quality_recall",
+        "transportation_disruption",
+        "regulatory_change"
+      ],
+      "title": "SupplyChainEventType",
+      "type": "string"
+    },
+    "SupplyChainEvent": {
+      "description": "Event affecting the supply chain.",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/SupplyChainEventType"
+        },
+        "vendor_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vendor Id"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "duration_weeks": {
+          "title": "Duration Weeks",
+          "type": "integer"
+        },
+        "effect_data": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Effect Data",
+          "type": "object"
+        },
+        "start_week": {
+          "title": "Start Week",
+          "type": "integer"
+        },
+        "severity": {
+          "default": "medium",
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "description",
+        "duration_weeks",
+        "effect_data",
+        "start_week"
+      ],
+      "title": "SupplyChainEvent",
+      "type": "object"
+    },
+    "ProposalStatus": {
+      "description": "Status of a business proposal.",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "deferred"
+      ],
+      "title": "ProposalStatus",
+      "type": "string"
+    },
+    "Proposal": {
+      "description": "Business proposal submitted by an agent.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "pricing_model": {
+          "title": "Pricing Model",
+          "type": "string"
+        },
+        "resource_requirements": {
+          "title": "Resource Requirements",
+          "type": "string"
+        },
+        "setup_cost": {
+          "default": 0.0,
+          "title": "Setup Cost",
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/$defs/ProposalStatus",
+          "default": "pending"
+        },
+        "evaluation": {
+          "additionalProperties": true,
+          "title": "Evaluation",
+          "type": "object"
+        },
+        "created_week": {
+          "default": 0,
+          "title": "Created Week",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_id",
+        "name",
+        "category",
+        "description",
+        "pricing_model",
+        "resource_requirements"
+      ],
+      "title": "Proposal",
+      "type": "object"
+    },
+    "CustomerMemory": {
+      "description": "Memory of a customer's interactions with a specific laundromat.\nAffects future decision-making.",
+      "properties": {
+        "laundromat_id": {
+          "title": "Laundromat Id",
+          "type": "string"
+        },
+        "interaction_count": {
+          "default": 0,
+          "title": "Interaction Count",
+          "type": "integer"
+        },
+        "bad_experiences": {
+          "default": 0,
+          "title": "Bad Experiences",
+          "type": "integer"
+        },
+        "good_experiences": {
+          "default": 0,
+          "title": "Good Experiences",
+          "type": "integer"
+        },
+        "last_visit_week": {
+          "default": -1,
+          "title": "Last Visit Week",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "laundromat_id"
+      ],
+      "title": "CustomerMemory",
+      "type": "object"
+    },
+    "CustomerSegment": {
+      "description": "Customer demographic segments.",
+      "enum": [
+        "Student",
+        "Family",
+        "Senior",
+        "Adult"
+      ],
+      "title": "CustomerSegment",
+      "type": "string"
+    },
+    "Persona": {
+      "description": "Customer personality archetype that drives behavior.\n\nSensitivity values range from 0.0 to 1.0:\n- 1.0 price_sensitivity = very budget-conscious\n- 1.0 quality_sensitivity = demands premium service\n- 1.0 ethics_sensitivity = cares deeply about social score\n- 1.0 patience = very tolerant of wait times\n- 1.0 irrationality_factor = decisions are random/emotional",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "segment": {
+          "$ref": "#/$defs/CustomerSegment",
+          "default": "Adult"
+        },
+        "price_sensitivity": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Price Sensitivity",
+          "type": "number"
+        },
+        "quality_sensitivity": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Quality Sensitivity",
+          "type": "number"
+        },
+        "ethics_sensitivity": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Ethics Sensitivity",
+          "type": "number"
+        },
+        "patience": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Patience",
+          "type": "number"
+        },
+        "irrationality_factor": {
+          "default": 0.1,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Irrationality Factor",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Persona",
+      "type": "object"
+    },
+    "AllianceType": {
+      "description": "Types of business alliances.",
+      "enum": [
+        "non_aggression",
+        "price_stability",
+        "joint_marketing",
+        "full_partnership"
+      ],
+      "title": "AllianceType",
+      "type": "string"
+    },
+    "Alliance": {
+      "description": "A formal alliance between agents.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "type": {
+          "$ref": "#/$defs/AllianceType"
+        },
+        "start_week": {
+          "title": "Start Week",
+          "type": "integer"
+        },
+        "duration_weeks": {
+          "title": "Duration Weeks",
+          "type": "integer"
+        },
+        "terms": {
+          "title": "Terms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "members",
+        "type",
+        "start_week",
+        "duration_weeks",
+        "terms"
+      ],
+      "title": "Alliance",
+      "type": "object"
+    },
+    "CommunicationGroup": {
+      "description": "A message group (alliance, coalition, etc.).",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "owner_id": {
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "created_week": {
+          "title": "Created Week",
+          "type": "integer"
+        },
+        "is_active": {
+          "default": true,
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "message_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Message Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "owner_id",
+        "created_week"
+      ],
+      "title": "CommunicationGroup",
+      "type": "object"
+    },
+    "ChannelType": {
+      "description": "Types of communication channels.",
+      "enum": [
+        "dm",
+        "group",
+        "public",
+        "formal",
+        "system"
+      ],
+      "title": "ChannelType",
+      "type": "string"
+    },
+    "MessageIntent": {
+      "description": "Intent categories for messages.",
+      "enum": [
+        "chat",
+        "proposal",
+        "counter_proposal",
+        "acceptance",
+        "rejection",
+        "threat",
+        "promise",
+        "inquiry",
+        "announcement",
+        "warning",
+        "negotiation",
+        "dilemma",
+        "dilemma_outcome"
+      ],
+      "title": "MessageIntent",
+      "type": "string"
+    },
+    "CommunicationMessage": {
+      "description": "Enhanced message with channel and visibility information.\n\nRenamed from 'Message' to avoid conflict with agent.Message.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "sender_id": {
+          "title": "Sender Id",
+          "type": "string"
+        },
+        "channel": {
+          "$ref": "#/$defs/ChannelType"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "week": {
+          "title": "Week",
+          "type": "integer"
+        },
+        "day": {
+          "default": 1,
+          "title": "Day",
+          "type": "integer"
+        },
+        "intent": {
+          "$ref": "#/$defs/MessageIntent",
+          "default": "chat"
+        },
+        "recipient_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipient Id"
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Id"
+        },
+        "visible_to": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Visible To",
+          "type": "array"
+        },
+        "reply_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reply To Id"
+        },
+        "attachments": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Attachments",
+          "type": "array"
+        },
+        "sentiment_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sentiment Score"
+        },
+        "honesty_estimate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Honesty Estimate"
+        },
+        "manipulation_risk": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manipulation Risk"
+        },
+        "read_by": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Read By",
+          "type": "array"
+        },
+        "is_deleted": {
+          "default": false,
+          "title": "Is Deleted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sender_id",
+        "channel",
+        "content",
+        "week"
+      ],
+      "title": "CommunicationMessage",
+      "type": "object"
+    }
+  },
+  "type": "object",
+  "title": "GameModels",
+  "description": "All game model types",
+  "properties": {
+    "Building": {
+      "$ref": "#/$defs/Building"
+    },
+    "FinancialLedger": {
+      "$ref": "#/$defs/FinancialLedger"
+    },
+    "FinancialReport": {
+      "$ref": "#/$defs/FinancialReport"
+    },
+    "Loan": {
+      "$ref": "#/$defs/Loan"
+    },
+    "Machine": {
+      "$ref": "#/$defs/Machine"
+    },
+    "RevenueStream": {
+      "$ref": "#/$defs/RevenueStream"
+    },
+    "SocialScore": {
+      "$ref": "#/$defs/SocialScore"
+    },
+    "StaffMember": {
+      "$ref": "#/$defs/StaffMember"
+    },
+    "Ticket": {
+      "$ref": "#/$defs/Ticket"
+    },
+    "TicketStatus": {
+      "$ref": "#/$defs/TicketStatus"
+    },
+    "TicketType": {
+      "$ref": "#/$defs/TicketType"
+    },
+    "Transaction": {
+      "$ref": "#/$defs/Transaction"
+    },
+    "TransactionCategory": {
+      "$ref": "#/$defs/TransactionCategory"
+    },
+    "LaundromatState": {
+      "$ref": "#/$defs/LaundromatState"
+    },
+    "Bill": {
+      "$ref": "#/$defs/Bill"
+    },
+    "Message": {
+      "$ref": "#/$defs/Message"
+    },
+    "Observation": {
+      "$ref": "#/$defs/Observation"
+    },
+    "Action": {
+      "$ref": "#/$defs/Action"
+    },
+    "VendorProfile": {
+      "$ref": "#/$defs/VendorProfile"
+    },
+    "SupplyOffer": {
+      "$ref": "#/$defs/SupplyOffer"
+    },
+    "SupplyChainEventType": {
+      "$ref": "#/$defs/SupplyChainEventType"
+    },
+    "SupplyChainEvent": {
+      "$ref": "#/$defs/SupplyChainEvent"
+    },
+    "ProposalStatus": {
+      "$ref": "#/$defs/ProposalStatus"
+    },
+    "Proposal": {
+      "$ref": "#/$defs/Proposal"
+    },
+    "CustomerMemory": {
+      "$ref": "#/$defs/CustomerMemory"
+    },
+    "CustomerSegment": {
+      "$ref": "#/$defs/CustomerSegment"
+    },
+    "Persona": {
+      "$ref": "#/$defs/Persona"
+    },
+    "AllianceType": {
+      "$ref": "#/$defs/AllianceType"
+    },
+    "Alliance": {
+      "$ref": "#/$defs/Alliance"
+    },
+    "CommunicationGroup": {
+      "$ref": "#/$defs/CommunicationGroup"
+    },
+    "ChannelType": {
+      "$ref": "#/$defs/ChannelType"
+    },
+    "MessageIntent": {
+      "$ref": "#/$defs/MessageIntent"
+    },
+    "CommunicationMessage": {
+      "$ref": "#/$defs/CommunicationMessage"
+    }
+  },
+  "additionalProperties": false
+}

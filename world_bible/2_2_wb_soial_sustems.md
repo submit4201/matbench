@@ -66,7 +66,7 @@ text
 │   Charitable donation ($100-$249)           +2        Weekly            │
 │   Charitable donation ($250-$499)           +3        Weekly            │
 │   Charitable donation ($500+)               +5        Weekly            │
-│   Free laundry day for homeless             +4        Monthly           │
+│   Free laundry day for homeless             +4        Monthly           │     
 │   Local sports team sponsorship             +3        Per season        │
 │   School supply drive hosted                +3        Quarterly         │
 │   Community meeting space provided          +2        Monthly           │

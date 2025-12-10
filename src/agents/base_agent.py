@@ -1,56 +1,76 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Dict, Any, List, Optional
+from typing import List, Dict, Any, Optional
 from enum import Enum
+from src.models.agent import Action, Message, Observation
 
-class ActionType(Enum):
-    SET_PRICE = "set_price"
-    MARKETING_CAMPAIGN = "marketing_campaign"
-    UPGRADE_MACHINE = "upgrade_machine"
-    SEND_MESSAGE = "send_message"
-    BUY_SUPPLIES = "buy_supplies"
-    RESOLVE_TICKET = "resolve_ticket"
-    PROPOSE_ALLIANCE = "propose_alliance"
-    INITIATE_BUYOUT = "initiate_buyout"
-    NEGOTIATE = "negotiate"
-    WAIT = "wait"
-
-@dataclass
-class Action:
-    type: ActionType
-    parameters: Dict[str, Any] = None
+class ActionType(str, Enum):
+    """Enumeration of possible agent actions."""
+    SET_PRICE = "SET_PRICE"
+    BUY_SUPPLIES = "BUY_SUPPLIES"
+    MARKETING_CAMPAIGN = "MARKETING_CAMPAIGN"
+    UPGRADE_MACHINE = "UPGRADE_MACHINE"
+    RESOLVE_TICKET = "RESOLVE_TICKET"
+    SEND_MESSAGE = "SEND_MESSAGE"
+    WAIT = "WAIT"
+    # Extended
+    PROPOSE_ALLIANCE = "PROPOSE_ALLIANCE"
+    INITIATE_BUYOUT = "INITIATE_BUYOUT"
+    NEGOTIATE = "NEGOTIATE"
+    PAY_BILL = "PAY_BILL"
+    HIRE_STAFF = "HIRE_STAFF"
+    SCHEDULE_MAINTENANCE = "SCHEDULE_MAINTENANCE"
+    APPLY_LOAN = "APPLY_LOAN"
+    BUY_BUILDING = "BUY_BUILDING"
+    RESOLVE_DILEMMA = "RESOLVE_DILEMMA"
+    FIRE_STAFF = "FIRE_STAFF"
+    TRAIN_STAFF = "TRAIN_STAFF"
+    MAKE_PAYMENT = "MAKE_PAYMENT"
+    # Extended Tools Actions
+    APPLY_FOR_LOAN = "APPLY_FOR_LOAN"
+    SCHEDULE_ACTION = "SCHEDULE_ACTION"
+    SEND_DM = "SEND_DM"
+    SEND_PUBLIC = "SEND_PUBLIC"
+    SEND_FORMAL = "SEND_FORMAL"
     
-    def __post_init__(self):
-        if self.parameters is None:
-            self.parameters = {}
+    # Active Perception & Info Gathering
+    INSPECT_COMPETITOR = "INSPECT_COMPETITOR"
+    CHECK_MARKET_TRENDS = "CHECK_MARKET_TRENDS"
+    READ_NEWS = "READ_NEWS"
+    INSPECT_FACILITY = "INSPECT_FACILITY"
+    INSPECT_INVENTORY = "INSPECT_INVENTORY"
+    INSPECT_VENDOR = "INSPECT_VENDOR"
+    
+    # Financial Info
+    
+    # Meta (New)
+    GET_TOOL_HELP = "GET_TOOL_HELP"
 
-@dataclass
-class Message:
-    sender_id: str
-    recipient_id: str
-    content: str
-    week: int
+    # Final Gaps (Regulatory & Emergency)
+    EMERGENCY_REPAIR = "EMERGENCY_REPAIR"
+    CHECK_REGULATIONS = "CHECK_REGULATIONS"
+    CHECK_REPUTATION = "CHECK_REPUTATION"
+    INSPECT_PUBLIC_RECORDS = "INSPECT_PUBLIC_RECORDS"
 
-@dataclass
-class Observation:
-    week: int
-    season: str
-    my_stats: Dict[str, Any]
-    competitor_stats: List[Dict[str, Any]]
-    messages: List[Message]
-    events: List[str]
-    alliances: List[str] = None
-    trust_scores: Dict[str, float] = None
-    market_data: Dict[str, Any] = None
-
+    
 class BaseAgent(ABC):
+    """
+    Abstract base class for all Laundromat Tycoon agents.
+    """
     def __init__(self, agent_id: str, name: str):
-        self.id = agent_id
+        self.agent_id = agent_id
         self.name = name
 
+    @property
+    def id(self) -> str:
+        return self.agent_id
+
     @abstractmethod
-    def decide_action(self, observation: Observation) -> Action:
+    def decide_action(self, observation: Observation) -> List[Action]:
         """
-        Given the current state of the world (Observation), return an Action.
+        Core decision method.
+        Args:
+            observation: Current game state perceived by the agent
+        Returns:
+            List of Action objects to execute
         """
         pass
