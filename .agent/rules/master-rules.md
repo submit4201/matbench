@@ -9,7 +9,7 @@ master rules
 
 2. Logging - Must be logged to a file and the console and the file should be in a .log directory in the root of the project.
     2-A: in the .log directory there should be if more then one type of logging happening they should be in their own folder 
-    2-B: then each folder should have logs named by date and time with a discriptor of the type of log it is eg GameMaster-MM-DD-YYYY--HH.log[HH could be hour or run number]
+    2-B: then each folder should have logs named by date and time with a descriptor of the type of log it is eg GameMaster-MM-DD-YYYY--HH.log[HH could be hour or run number]
     2-C: the logs should be rotated every couple of hours and the logs should be compressed into a .zip file
     2-D: the logs should be compressed into a .zip file at the end of the day
 
