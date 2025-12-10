@@ -55,7 +55,7 @@ FUNCTION_TO_ACTION = {
     "inspect_facility": ActionType.INSPECT_FACILITY,
 }
 
-from src.utils.logger import get_logger, get_llm_trace_logger
+from src.utils.logger import get_logger
 
 # Existing imports...
 
@@ -83,8 +83,8 @@ class LLMAgent(BaseAgent):
         self.llm = None
         
         # Setup loggers
-        self.logger = get_logger(f"src.agents.{agent_id}")
-        self.trace_logger = get_llm_trace_logger()
+        self.logger = get_logger(f"agent.{agent_id}", category="agents")
+        self.trace_logger = get_logger(f"trace.{agent_id}", category="traces")
         
         # Setup LLM client using helper packages
         self.logger.info(f"[{self.name}] Starting LLM initialization...")

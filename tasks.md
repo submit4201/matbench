@@ -5,10 +5,22 @@ This document compiles all refactoring suggestions and specific user notes gathe
 - [ ] - not done
 - [x] - done
 - [/] - partial
-## logging
-- [ ] **Logging**: Implement logging for all actions and events.
-- [ ] - we need to make sure we have a logging system that works for both the frontend and backend
-- should be a middleware that logs all actions and events
+- [x] **Logging**: Implement centralized, structured logging.
+    - [x] Create `src/core/logger.py` (or update `src/utils/logger.py`).
+    - [x] Implement rotation and compression policies (every couple hours / end of day).
+    - [x] Ensure separate folders per log type (if applicable, or just clear naming).
+    - [x] Replace `print` statements with logger calls throughout `src`.
+        - [x] Server & Agents
+        - [x] Game Engine
+        - [x] Commerce (Vendor, Market)
+        - [x] Finance
+        - [x] Core (Events, Time)
+    - [x] Add JSON formatting for structured logs.
+
+- [x] **Testing**: Implement comprehensive testing (Rule 3).
+    - [x] Create `.test` directory structure.
+    - [x] Configure `pytest`.
+    - [x] Integrate logging into tests.
 
 ## Frontend
 
@@ -33,25 +45,6 @@ This document compiles all refactoring suggestions and specific user notes gathe
 # this section is being completed by agent - ione
 ### Agent Tools Wishlist (Registration Needed) (COMPLETED)
 
-- [x] **Registry**: Implement `src/agents/tools/registry.py` [Ref: registry.py](file:///e:/projects/repo_mat/matbench.worktrees/new2/src/agents/tools/registry.py)
-- [x] **Tools**: Implement tools for full "Think-Act-React" loop.
-  - [x] - we need to list all the tools we want to implement
-  - [x] - the tools should be registered in the registry
-  - [x] - thr give the registry to the agents
-
-  #### Information Gathering (Active Perception)
-
-      - [x] `inspect_competitor(competitor_id: str)`: View detailed public stats (price, reputation) of a specific rival.
-      - [x] `check_market_trends()`: Get report on global resource prices and demand shifts.
-      - [x] `read_news()`: Retrieve active world events and narratives affecting the market.
-      - [x] `get_calendar()`: View schedule of upcoming bills, maintenance, and events. (`CHECK_CALENDAR` action type)
-      - [x] check mail - dms  - messages offers (`send_dm` / `inspection` tools)
-      - [x] - check tool registry for more tools and or get tool help screeb \prompt for explanations on how to use the tool and what it does (`get_tool_help`)
-
-  #### Finance & Tycoon Extensions
-
-      - [x] `check_credit_score()`: View current credit rating and borrowing power.
-      - [x] `apply_for_loan(amount: float)`: Request capital from the bank.
       - [x] `pay_bill(bill_id: str)`: Pay specific outstanding bills. (`ActionType.PAY_BILL` map exists)
       - [x] `check_financial_health()`: Get a comprehensive financial report. (`get_financial_report`)
       - [x] `check_bank_balance()`: View current bank account balance. (Included in financial report)
@@ -93,9 +86,9 @@ This document compiles all refactoring suggestions and specific user notes gathe
   
   #### Next Steps (From Tool Implementation)
   
-  - [ ] **Implementation**: Implement specific logic for `check_market_trends` (currently stub/mock).
+  - [x] **Implementation**: Implement specific logic for `check_market_trends` (Connected to MarketSystem).
   - [ ] **Refinement**: Refine `inspect_competitor` to filter based on "Fog of War" or Intelligence Level.
-  - [ ] **Integration**: Integrate `Staff` mechanics more deeply into the simulation (e.g. staff actually affecting efficiency/cleanliness in `process_turn`).
+  - [x] **Integration**: Integrate `Staff` mechanics more deeply into the simulation (Cleaners, Techs, Attendants active).
         - [x]  regulatory systems implementation - need tools here for llm to understand and use these systesm
         - [x] scores and reputation system we tools for this system
         - [x] public records and history and relations and i think we need tools for this system  but maybe i missed it earlier 
@@ -106,7 +99,7 @@ This document compiles all refactoring suggestions and specific user notes gathe
 ---
 ## Engines
 
-- [ ] **Market System**: Implement full Market/Economy system logic.
+- [x] **Market System**: Implement full Market/Economy system logic (Trends, Fluctuations, Reports).
 - [ ] **Supply Chain**: Implement detailed logistics simulation. delivery shipments, 
 - [ ] **Vendor Order Logic**: Separate concerns by splitting `OrderProcessor`&`Vendor`
 - [ ] **Time System**: Implement Daily Timer and Real-Time modes.
