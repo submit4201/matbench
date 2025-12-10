@@ -23,8 +23,8 @@ interface GameSetupProps {
 }
 
 export interface GameConfig {
-  aiModel: string;
-  timeMode: 'realtime' | 'daily' | 'weekly' | 'manual';
+  aiModel: Array<'gemini' | 'openai' | 'claude' | 'phi' | 'meta' | 'mistral'>;
+  timeMode: 'auto' | 'daily' | 'weekly' | 'ai';
   weeks: number;
   startingMoney: number;
   competitorCount: number;
@@ -32,36 +32,36 @@ export interface GameConfig {
 }
 
 const aiModels = [
-  { id: 'gemini', name: 'Gemini 2.0', provider: 'Google', icon: '🟢' },
-  { id: 'gpt4', name: 'GPT-4o', provider: 'OpenAI', icon: '🟣' },
-  { id: 'claude', name: 'Claude 3.5', provider: 'Anthropic', icon: '🟠' },
-  { id: 'phi', name: 'Phi-3', provider: 'Microsoft', icon: '🔵' },
-  { id: 'llama', name: 'Llama 3', provider: 'Meta', icon: '🦙' },
-  { id: 'custom', name: 'Custom API', provider: 'Your Model', icon: '⚙️' },
+  { id: 'gemini', name: 'Gemini 2.5 Flash', provider: 'Google', icon: '🟢' },
+  { id: 'openai', name: 'GPT-5-mini', provider: 'OpenAI', icon: '🟣' },
+  { id: 'claude', name: 'Claude opus 4.5', provider: 'Anthropic', icon: '🟠' },
+  { id: 'phi', name: 'Phi-4-instruct', provider: 'Microsoft', icon: '🔵' },
+  { id: 'meta', name: 'Llama 4 scout', provider: 'Meta', icon: '🦙' },
+  { id: 'mistral', name: 'mistral', provider: 'Your Model', icon: '⚙️' },
 ];
 
 const timeModes = [
-  { id: 'realtime', name: 'Real-time', desc: '1 turn per second', icon: <Zap className="w-4 h-4" /> },
-  { id: 'daily', name: 'Daily', desc: '1 turn per day', icon: <Clock className="w-4 h-4" /> },
-  { id: 'weekly', name: 'Weekly', desc: '1 turn per week', icon: <Calendar className="w-4 h-4" /> },
-  { id: 'manual', name: 'Manual', desc: 'Click to advance', icon: <Play className="w-4 h-4" /> },
+  { id: 'auto', name: 'auto', desc: '1 day per ten minutes', icon: <Zap className="w-4 h-4" /> },
+  { id: 'daily', name: 'Daily', desc: '1 day per turn', icon: <Clock className="w-4 h-4" /> },
+  { id: 'weekly', name: 'Weekly', desc: '1 week per turn', icon: <Calendar className="w-4 h-4" /> },
+  { id: 'ai', name: 'AI', desc: 'no human player', icon: <Play className="w-4 h-4" /> },
 ];
 
 const difficulties = [
-  { id: 'easy', name: 'Easy', desc: 'Forgiving market', color: 'text-green-400 border-green-500/30 bg-green-500/10' },
-  { id: 'medium', name: 'Medium', desc: 'Balanced challenge', color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
-  { id: 'hard', name: 'Hard', desc: 'Aggressive AI', color: 'text-red-400 border-red-500/30 bg-red-500/10' },
-  { id: 'chaos', name: 'Chaos', desc: 'Random events', color: 'text-purple-400 border-purple-500/30 bg-purple-500/10' },
+  { id: 'easy', name: 'Easy', desc: 'easy', color: 'text-green-400 border-green-500/30 bg-green-500/10' },
+  { id: 'medium', name: 'Medium', desc: 'medium', color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
+  { id: 'hard', name: 'Hard', desc: 'hard', color: 'text-red-400 border-red-500/30 bg-red-500/10' },
+  { id: 'chaos', name: 'Chaos', desc: 'chaos', color: 'text-purple-400 border-purple-500/30 bg-purple-500/10' },
 ];
 
 export default function GameSetup({ onStart, onBack }: GameSetupProps) {
   const [config, setConfig] = useState<GameConfig>({
-    aiModel: 'gemini',
-    timeMode: 'manual',
+    aiModel: ['gemini', 'meta', 'mistral'],
+    timeMode: 'auto',
     weeks: 52,
-    startingMoney: 10000,
+    startingMoney: 1000,
     competitorCount: 3,
-    difficulty: 'medium',
+    difficulty: 'easy',
   });
 
   const handleStart = () => {
@@ -70,6 +70,20 @@ export default function GameSetup({ onStart, onBack }: GameSetupProps) {
 
   const updateConfig = <K extends keyof GameConfig>(key: K, value: GameConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Toggle a model in the aiModel array (multi-select)
+  const toggleModel = (modelId: GameConfig['aiModel'][number]) => {
+    setConfig((prev) => {
+      const isSelected = prev.aiModel.includes(modelId);
+      if (isSelected) {
+        // Don't remove if it's the last one
+        if (prev.aiModel.length <= 1) return prev;
+        return { ...prev, aiModel: prev.aiModel.filter((id) => id !== modelId) };
+      } else {
+        return { ...prev, aiModel: [...prev.aiModel, modelId] };
+      }
+    });
   };
 
   return (
@@ -104,12 +118,11 @@ export default function GameSetup({ onStart, onBack }: GameSetupProps) {
               {aiModels.map((model) => (
                 <button
                   key={model.id}
-                  onClick={() => updateConfig('aiModel', model.id)}
-                  className={`p-4 rounded-xl border text-left transition-all ${
-                    config.aiModel === model.id
-                      ? 'border-emerald-500 bg-emerald-500/10'
-                      : 'border-slate-700 hover:border-slate-600 bg-slate-800/50'
-                  }`}
+                  onClick={() => toggleModel(model.id as GameConfig['aiModel'][number])}
+                  className={`p-4 rounded-xl border text-left transition-all ${config.aiModel.includes(model.id as GameConfig['aiModel'][number])
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-slate-700 hover:border-slate-600 bg-slate-800/50'
+                    }`}
                 >
                   <div className="text-2xl mb-2">{model.icon}</div>
                   <div className="font-medium">{model.name}</div>
@@ -126,11 +139,10 @@ export default function GameSetup({ onStart, onBack }: GameSetupProps) {
                 <button
                   key={mode.id}
                   onClick={() => updateConfig('timeMode', mode.id as GameConfig['timeMode'])}
-                  className={`p-4 rounded-xl border text-center transition-all ${
-                    config.timeMode === mode.id
-                      ? 'border-emerald-500 bg-emerald-500/10'
-                      : 'border-slate-700 hover:border-slate-600 bg-slate-800/50'
-                  }`}
+                  className={`p-4 rounded-xl border text-center transition-all ${config.timeMode === mode.id
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-slate-700 hover:border-slate-600 bg-slate-800/50'
+                    }`}
                 >
                   <div className="flex justify-center mb-2 text-slate-400">{mode.icon}</div>
                   <div className="font-medium text-sm">{mode.name}</div>
@@ -195,11 +207,10 @@ export default function GameSetup({ onStart, onBack }: GameSetupProps) {
                 <button
                   key={n}
                   onClick={() => updateConfig('competitorCount', n)}
-                  className={`flex-1 py-4 rounded-xl border font-bold text-lg transition-all ${
-                    config.competitorCount === n
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                      : 'border-slate-700 hover:border-slate-600 bg-slate-800/50 text-slate-400'
-                  }`}
+                  className={`flex-1 py-4 rounded-xl border font-bold text-lg transition-all ${config.competitorCount === n
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                    : 'border-slate-700 hover:border-slate-600 bg-slate-800/50 text-slate-400'
+                    }`}
                 >
                   {n}
                 </button>
@@ -214,11 +225,10 @@ export default function GameSetup({ onStart, onBack }: GameSetupProps) {
                 <button
                   key={diff.id}
                   onClick={() => updateConfig('difficulty', diff.id as GameConfig['difficulty'])}
-                  className={`p-4 rounded-xl border text-center transition-all ${
-                    config.difficulty === diff.id
-                      ? diff.color
-                      : 'border-slate-700 hover:border-slate-600 bg-slate-800/50'
-                  }`}
+                  className={`p-4 rounded-xl border text-center transition-all ${config.difficulty === diff.id
+                    ? diff.color
+                    : 'border-slate-700 hover:border-slate-600 bg-slate-800/50'
+                    }`}
                 >
                   <div className="font-semibold">{diff.name}</div>
                   <div className="text-xs text-slate-400">{diff.desc}</div>

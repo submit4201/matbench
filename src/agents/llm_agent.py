@@ -52,7 +52,7 @@ FUNCTION_TO_ACTION.update(EXTENDED_FUNCTION_TO_ACTION)
 class LLMAgent(BaseAgent):
     """AI Agent that uses LLMs with function calling for structured output"""
     
-    def __init__(self, agent_id: str, name: str, model: str = "gpt-4", llm_provider: str = "AZURE"):
+    def __init__(self, agent_id: str, name: str, model: str = "gemini-1.5-flash", llm_provider: str = "AZURE"):
         super().__init__(agent_id, name)
         self.model = model
         self.llm_provider = llm_provider

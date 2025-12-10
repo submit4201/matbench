@@ -20,13 +20,13 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
+venv313
 # Virtual Environments
 venv/
 env/
 ENV/
 .env
-
+E:\projects\repo_mat\matbench\venv313
 # Testing
 .pytest_cache/
 .coverage

@@ -1,37 +1,9 @@
 import random
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from enum import Enum
 import math
-from .supply import SupplyChainManager, SupplyChainEvent, SupplyChainEventType
-
-class VendorTier(Enum):
-    NEW = 1
-    REGULAR = 2
-    PREFERRED = 3
-    STRATEGIC = 4
-
-@dataclass
-class SupplyOffer:
-    item_name: str
-    price: float
-    description: str
-    min_quantity: int = 1
-
-@dataclass
-class VendorProfile:
-    id: str
-    name: str
-    slogan: str
-    description: str
-    base_prices: Dict[str, float]
-    reliability: float  # 0.0 to 1.0
-    sustainability: float  # -5 to +5 social score impact
-    min_order: int
-    delivery_days: int
-    payment_terms: str
-    special_features: List[str]
-    risks: List[str] = field(default_factory=list)
+from src.models.commerce import VendorTier, SupplyOffer, VendorProfile, SupplyChainEventType
+from .supply import SupplyChainManager
 
 class Vendor:
     def __init__(self, profile: VendorProfile):

@@ -1,35 +1,6 @@
-from enum import Enum
-from dataclasses import dataclass, field
-from typing import Optional, Dict, List
 import random
-
-class SupplyChainEventType(Enum):
-    # Regular (Per Order/Weekly)
-    DELIVERY_DELAY_MINOR = "delivery_delay_minor"
-    DELIVERY_DELAY_MAJOR = "delivery_delay_major"
-    PARTIAL_SHIPMENT = "partial_shipment"
-    QUALITY_ISSUE_MINOR = "quality_issue_minor"
-    QUALITY_ISSUE_MAJOR = "quality_issue_major"
-    PRICE_FLUCTUATION = "price_fluctuation"
-    LOST_SHIPMENT = "lost_shipment"
-    
-    # Major (Strategic)
-    VENDOR_SHORTAGE = "vendor_shortage"
-    PRICE_SPIKE = "price_spike"
-    VENDOR_BANKRUPTCY = "vendor_bankruptcy"
-    QUALITY_RECALL = "quality_recall"
-    TRANSPORTATION_DISRUPTION = "transportation_disruption"
-    REGULATORY_CHANGE = "regulatory_change"
-
-@dataclass
-class SupplyChainEvent:
-    type: SupplyChainEventType
-    vendor_id: Optional[str]  # None if global/all vendors
-    description: str
-    duration_weeks: int  # 0 for one-time
-    effect_data: Dict[str, float]
-    start_week: int
-    severity: str = "medium"  # low, medium, high, critical
+from typing import Optional, Dict, List
+from src.models.commerce import SupplyChainEventType, SupplyChainEvent
 
 class SupplyChainManager:
     def __init__(self):

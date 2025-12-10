@@ -21,6 +21,10 @@ import { OperationsPanel } from './components/operations';
 import { MessageCenter } from './components/communications';
 import { SocialDashboard } from './components/social';
 import { NotificationDot } from './components/shared';
+import VendorHub from './components/vendors/VendorHub';
+import NeighborhoodView from './components/neighborhood/NeighborhoodView';
+import HistoryViewer from './components/history/HistoryViewer';
+import Scoreboard from './components/scoreboard/Scoreboard';
 
 // ═══════════════════════════════════════════════════════════════════════
 // GameShell Component
@@ -79,13 +83,13 @@ export default function GameShell({ onRestart }: GameShellProps) {
       case 'social':
         return <SocialDashboard />;
       case 'vendors':
-        return <PlaceholderPanel title="Vendor Marketplace" description="Catalog, negotiate, place orders" />;
+        return <VendorHub />;
       case 'neighborhood':
-        return <PlaceholderPanel title="Neighborhood Hub" description="Zone map, demographics, competitor intel" />;
+        return <NeighborhoodView />;
       case 'history':
-        return <PlaceholderPanel title="History Viewer" description="Turn log with filters" />;
+        return <HistoryViewer />;
       case 'scoreboard':
-        return <PlaceholderPanel title="Scoreboard" description="5-category ranking" />;
+        return <Scoreboard />;
       default:
         return <Dashboard />;
     }
@@ -209,20 +213,6 @@ export default function GameShell({ onRestart }: GameShellProps) {
           </motion.aside>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-// ─── Placeholder Panel ──────────────────────────────────────────────────
-function PlaceholderPanel({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-64 text-center">
-      <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-4">
-        <Settings className="w-8 h-8 text-slate-600 animate-pulse" />
-      </div>
-      <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
-      <p className="text-slate-400 max-w-md">{description}</p>
-      <p className="text-xs text-slate-600 mt-4">Coming soon in Phase 1...</p>
     </div>
   );
 }

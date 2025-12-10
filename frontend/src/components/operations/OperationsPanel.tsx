@@ -7,6 +7,8 @@ import {
   Zap,
   Package,
   Gauge,
+  Trash2,
+  GraduationCap,
 } from 'lucide-react';
 import { useGameStore } from '../../stores/gameStore';
 import { Card, Button, Badge, TabGroup, TabContent } from '../shared';
@@ -141,6 +143,16 @@ export default function OperationsPanel() {
               </Card>
             ))}
           </div>
+          <div className="mt-4 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex justify-between items-center">
+            <div>
+              <p className="text-white font-medium">Current Marketing Impact</p>
+              <p className="text-xs text-slate-400">Boosts customer acquisition rate</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-indigo-400">+{((laundromat.marketing_boost || 0) * 10).toFixed(0)}%</p>
+              <p className="text-xs text-indigo-300">Traffic Multiplier</p>
+            </div>
+          </div>
         </TabContent>
 
         {/* Machines Tab */}
@@ -197,7 +209,6 @@ export default function OperationsPanel() {
           <Card variant="glass">
             <h3 className="text-lg font-semibold text-white mb-4">Staff Management</h3>
 
-
             {laundromat.staff && laundromat.staff.length > 0 ? (
               <div className="space-y-3">
                 {laundromat.staff.map((member) => (
@@ -209,15 +220,37 @@ export default function OperationsPanel() {
                       <p className="text-white font-medium">{member.name}</p>
                       <p className="text-xs text-slate-400">{member.role}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-emerald-400 font-medium">${member.wage}/wk</p>
-                      <p className="text-xs text-slate-400">Skill: {member.skill_level.toFixed(1)}/10</p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right mr-2">
+                        <p className="text-emerald-400 font-medium">${member.wage}/wk</p>
+                        <p className="text-xs text-slate-400">Skill: {member.skill_level.toFixed(1)}/10</p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => sendAction('TRAIN_STAFF', { staff_id: member.id, cost: 150 })}
+                        loading={isLoading}
+                        title="Train Staff ($150)"
+                      >
+                        <GraduationCap className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => sendAction('FIRE_STAFF', { staff_id: member.id })}
+                        loading={isLoading}
+                        title="Fire Staff (Pays 2wks Severance)"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
-                <Button variant="primary" className="w-full mt-4" onClick={handleHireStaff} loading={isLoading}>
-                  Hire General Staff (Cost: $100)
-                </Button>
+                <div className="border-t border-white/10 my-4 pt-4">
+                  <Button variant="primary" className="w-full" onClick={handleHireStaff} loading={isLoading}>
+                    <Users className="w-4 h-4 mr-2" /> Hire General Staff (Cost: $100)
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="text-center py-8">
@@ -280,35 +313,59 @@ export default function OperationsPanel() {
           <Card variant="glass">
             <h3 className="text-lg font-semibold text-white mb-4">Inventory Levels</h3>
             <div className="space-y-4">
-              {Object.entries(laundromat.inventory).map(([item, quantity]) => (
-                <div key={item} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-300 capitalize">{item.replace(/_/g, ' ')}</span>
-                    <span className="text-white font-medium">{quantity as number} units</span>
+              {Object.entries(laundromat.inventory).map(([item, quantity]) => {
+                // Determine low stock threshold
+                const isLow = (quantity as number) < 20;
+                return (
+                  <div key={item} className="space-y-2 p-3 bg-white/5 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-200 capitalize font-medium">{item.replace(/_/g, ' ')}</span>
+                          {isLow && <Badge variant="warning" size="sm">Low</Badge>}
+                        </div>
+                        <span className="text-xs text-slate-400">{(quantity as number)} units in stock</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => sendAction('BUY_SUPPLIES', { item: item, quantity: 20 })}
+                          loading={isLoading}
+                          title={`Buy 20 ${item}`}
+                        >
+                          +20
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => sendAction('BUY_SUPPLIES', { item: item, quantity: 50 })}
+                          loading={isLoading}
+                          title={`Buy 50 ${item}`}
+                        >
+                          +50
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${(quantity as number) > 50
+                          ? 'bg-emerald-500'
+                          : (quantity as number) > 20
+                            ? 'bg-amber-500'
+                            : 'bg-red-500'
+                          }`}
+                        style={{ width: `${Math.min((quantity as number), 100)}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all ${(quantity as number) > 50
-                        ? 'bg-emerald-500'
-                        : (quantity as number) > 20
-                          ? 'bg-amber-500'
-                          : 'bg-red-500'
-                        }`}
-                      style={{ width: `${Math.min((quantity as number), 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
-            <Button
-              variant="primary"
-              className="w-full mt-6"
-              onClick={() => sendAction('BUY_SUPPLIES', { amount: 50 })}
-              loading={isLoading}
-            >
-              <Package className="w-4 h-4" />
-              Restock All (+$500)
-            </Button>
+            <div className="mt-4 text-xs text-center text-slate-500">
+              Supplies take 1-3 days to arrive correctly.
+            </div>
           </Card>
         </TabContent>
       </TabGroup>

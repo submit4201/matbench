@@ -83,6 +83,18 @@ class Bill(GameModel):
     generated_week: int = 0
     penalty_applied: bool = False
 
+class TaxRecord(GameModel):
+    """Stores tax filing information for a fiscal quarter."""
+    quarter: int
+    gross_revenue: float = 0.0
+    deductible_expenses: float = 0.0
+    net_profit: float = 0.0
+    tax_owed: float = 0.0
+    tax_paid: float = 0.0
+    is_filed: bool = False
+    due_week: int = 0
+    is_overdue: bool = False
+
 class Loan(GameModel):
     name: str
     principal: float

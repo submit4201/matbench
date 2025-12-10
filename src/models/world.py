@@ -2,6 +2,7 @@ from typing import List, Dict, Optional, Any
 from pydantic import Field, PrivateAttr, model_validator
 from src.models.base import GameModel
 from src.models.financial import FinancialLedger, RevenueStream, Loan, FinancialReport, TransactionCategory
+from src.models.social import SocialScore, Ticket
 
 class Machine(GameModel):
     id: str
@@ -39,8 +40,8 @@ class LaundromatState(GameModel):
     # Internal reputation storage
     _reputation: float = PrivateAttr(default=50.0)
     
-    # Social Score (mocked for now as Dict, ideally Pydantic model)
-    social_score: Dict[str, Any] = Field(default_factory=lambda: {"total_score": 50.0, "community_standing": 50.0})
+    # Social Score (Pydantic model with computed properties)
+    social_score: SocialScore = Field(default_factory=SocialScore)
     
     price: float = 5.0
     
@@ -87,8 +88,8 @@ class LaundromatState(GameModel):
         "customers": []
     })
     
-    # Active Data (Placeholders)
-    tickets: List[Dict[str, Any]] = Field(default_factory=list) # Ticket dicts
+    # Active Data
+    tickets: List[Ticket] = Field(default_factory=list)
     active_events: List[str] = Field(default_factory=list)
 
     def model_post_init(self, __context):
@@ -128,13 +129,13 @@ class LaundromatState(GameModel):
     @property
     def reputation(self) -> float:
         """Reputation is now directly linked to Social Score."""
-        return self.social_score.get("total_score", 50.0)
+        return self.social_score.total_score
         
     @reputation.setter
     def reputation(self, value: float):
         self._reputation = value
-        # Update social score too if direct set
-        self.social_score["total_score"] = value
+        # Update social score component
+        self.social_score.community_standing = value
 
     @property
     def balance(self) -> float:
@@ -152,14 +153,11 @@ class LaundromatState(GameModel):
         self.update_social_score("community_standing", delta)
 
     def update_social_score(self, component: str, delta: float):
-        # Simplified update logic for Dict structure
-        current = self.social_score.get(component, 50.0)
-        self.social_score[component] = max(0.0, min(100.0, current + delta))
-        
-        # Recalculate total (simplified avg or weighted)
-        # Assuming just syncing total_score to community_standing for now if that's the main driver
-        if component == "community_standing":
-            self.social_score["total_score"] = self.social_score[component]
+        """Update a social score component by delta."""
+        if hasattr(self.social_score, component):
+            current = getattr(self.social_score, component)
+            new_val = max(0.0, min(100.0, current + delta))
+            setattr(self.social_score, component, new_val)
     
     def update_inventory_usage(self, usage: Dict[str, int]):
         """Update inventory based on usage and recalculate burn rate."""
@@ -204,7 +202,7 @@ class LaundromatState(GameModel):
         # Archive current state to history
         self.history["balance"].append(self.balance)
         self.history["reputation"].append(self.reputation)
-        self.history["social_score"].append(self.social_score.get("total_score", 50.0))
+        self.history["social_score"].append(self.social_score.total_score)
         self.history["revenue"].append(revenue)
         self.history["expenses"].append(expenses)
         self.history["customers"].append(self.active_customers)

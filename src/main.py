@@ -41,8 +41,8 @@ def main():
     # p1 is Human, p2 and p3 are LLMs
     agents = [
         HumanAgent("p1", "Human Player"),
-        LLMAgent("p2", "Cheap AI", model="gpt-3.5-turbo"),
-        LLMAgent("p3", "Luxury AI", model="gpt-4")
+        LLMAgent("p2", "Cheap AI", model="gemini-1.5-flash"),
+        LLMAgent("p3", "Luxury AI", model="gemini-1.5-flash")
     ]
     
     # 3. Setup Customers from NPCFactory

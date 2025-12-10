@@ -7,3 +7,8 @@ python-dotenv
 openai
 google-genai
 azure-ai-inference
+pydantic
+# typescript types generation 
+typing-extensions
+
+datamodel_code_generator

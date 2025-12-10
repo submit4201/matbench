@@ -115,7 +115,7 @@ class Customer:
             # Quality/Reputation factor
             score += l.reputation * self.persona.quality_sensitivity
 
-            # Ethics factor
+            # Ethics factor (social_score is now always a Pydantic model)
             score += l.social_score.total_score * self.persona.ethics_sensitivity
 
             # Memory factor
@@ -257,6 +257,7 @@ class LLMCustomer(Customer):
                     "social_score": l.social_score.total_score,
                     "memory": mem_str
                 })
+
             
             prompt = f"""You are a customer named {self.persona.name} ({self.persona.segment}) choosing a laundromat.
 

@@ -1,28 +1,8 @@
-from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 import uuid
 import json
-
-class ProposalStatus(Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    DEFERRED = "deferred"
-
-@dataclass
-class Proposal:
-    id: str
-    agent_id: str
-    name: str
-    category: str  # wash, dry, bundle, premium, ancillary, other
-    description: str
-    pricing_model: str
-    resource_requirements: str
-    setup_cost: float = 0.0
-    status: ProposalStatus = ProposalStatus.PENDING
-    evaluation: Dict[str, Any] = field(default_factory=dict)
-    created_week: int = 0
+from src.models.commerce import ProposalStatus, Proposal
 
 class ProposalManager:
     def __init__(self, game_engine, llm_provider="azure"):

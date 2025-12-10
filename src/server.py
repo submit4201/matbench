@@ -325,6 +325,50 @@ def _apply_action(state: LaundromatState, action: Action):
                     state.id, payment_id, amount, game.engine.time_system.current_week
                 )
     
+
+    elif action.type == ActionType.FIRE_STAFF:
+        staff_id = action.parameters.get("staff_id")
+        staff_member = next((s for s in state.staff if s.id == staff_id), None)
+        
+        if staff_member:
+            from src.engine.finance.models import TransactionCategory
+            # Severance pay (2 weeks wages)
+            severance = staff_member.wage * 2
+            
+            if state.balance >= severance:
+                state.ledger.add(
+                    -severance,
+                    TransactionCategory.EXPENSE,
+                    f"Severance Pay: {staff_member.name}",
+                    game.engine.time_system.current_week
+                )
+                state.staff.remove(staff_member)
+                state.update_social_score("employee_relations", -2.0)
+                state.update_social_score("community_standing", -0.5)
+
+    elif action.type == ActionType.TRAIN_STAFF:
+        staff_id = action.parameters.get("staff_id")
+        program_cost = action.parameters.get("cost", 150)
+        
+        staff_member = next((s for s in state.staff if s.id == staff_id), None)
+        
+        if staff_member and state.balance >= program_cost:
+            from src.engine.finance.models import TransactionCategory
+            state.ledger.add(
+                -program_cost,
+                TransactionCategory.EXPENSE,
+                f"Staff Training: {staff_member.name}",
+                game.engine.time_system.current_week
+            )
+            
+            # Improve stats
+            import random
+            improvement = random.uniform(0.5, 1.5)
+            staff_member.skill_level = min(10.0, staff_member.skill_level + improvement)
+            staff_member.morale = min(100.0, staff_member.morale + 10.0)
+            
+            state.update_social_score("employee_relations", 0.5)
+
     elif action.type == ActionType.RESOLVE_DILEMMA:
         choice_id = action.parameters.get("choice_id")
         
@@ -450,11 +494,17 @@ def get_state(agent_id: str = "p1"):
         # Inject properties not covered by default dump if not ComputedField
         state_dump['balance'] = l.balance
         state_dump['broken_machines'] = l.broken_machines
+        state_dump['reputation'] = l.reputation  # Add reputation from property
+        # Convert machines list to count for frontend compatibility
+        if isinstance(state_dump.get('machines'), list):
+            state_dump['machines'] = len(state_dump['machines'])
         # Add metrics
         if hasattr(l, 'get_inventory_metrics'):
             state_dump['inventory_metrics'] = l.get_inventory_metrics()
         
         laundromats_data[pid] = state_dump
+
+
 
     # Serialize vendors
     vendors_data = []

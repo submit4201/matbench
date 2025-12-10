@@ -223,14 +223,14 @@ class EnhancedGameEngine:
         """Process due credit payments."""
         for agent_id in self.agent_ids:
             try:
-                due_payments = self.credit_system.get_due_payments(agent_id, week)
+                due_payments = self.financial_system.credit_system.get_due_payments(agent_id, week)
                 
                 for payment in due_payments:
                     state = self.states[agent_id]
                     
                     if state.balance >= payment.amount_due:
                         state.balance -= payment.amount_due
-                        result = self.credit_system.make_payment(
+                        result = self.financial_system.credit_system.make_payment(
                             agent_id,
                             payment.id,
                             payment.amount_due,
@@ -244,7 +244,7 @@ class EnhancedGameEngine:
                             week=week
                         )
                     else:
-                        self.credit_system.mark_missed_payment(
+                        self.financial_system.credit_system.mark_missed_payment(
                             agent_id,
                             payment.id,
                             week
@@ -256,7 +256,7 @@ class EnhancedGameEngine:
                             week=week
                         )
                 
-                self.credit_system.update_history_length(agent_id, week)
+                self.financial_system.credit_system.update_history_length(agent_id, week)
                 
             except Exception as e:
                 logger.error(f"Credit processing failed for {agent_id}: {e}")
@@ -308,8 +308,8 @@ class EnhancedGameEngine:
     
     def get_credit_report(self, agent_id: str) -> Dict[str, Any]:
         """Get credit report for an agent."""
-        return self.credit_system.get_credit_report(agent_id)
-    
+        return self.financial_system.credit_system.get_credit_report(agent_id)
+
     def get_calendar(self, agent_id: str):
         """Get calendar for an agent."""
         return self.calendar_manager.get_calendar(agent_id)
@@ -353,7 +353,7 @@ class EnhancedGameEngine:
                         "social_score": s.social_score.total_score,
                         "price": s.price
                     },
-                    "credit": self.credit_system.to_dict(aid),
+                    "credit": self.financial_system.credit_system.to_dict(aid),
                     "zone": self.get_zone_info(aid),
                     "calendar": self.calendar_manager.get_calendar(aid).get_statistics()
                 }
