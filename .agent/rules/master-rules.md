@@ -44,7 +44,7 @@ master rules
     5-I: Middleware for Validations, authentication, logging, Error handling, security and other cross-cutting concerns
     5-J: models should be that of schemas, pydantic models, and database models
 
-6. Create README.md for explanations of directories and expections for those directories
+6. Create README.md for explanations of directories and expectations for those directories
 7. always create TASK artifacts for your sprints make them as granular as possible
 8. if in question ask 
 
