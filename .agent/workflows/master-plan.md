@@ -25,7 +25,7 @@ This workflow guides the agent through selecting, planning, executing, and verif
 2.  **TDD approach**:
     *   Write/Update tests in `.test/` first (if applicable).
     *   Implement code changes.
-    *   Implement structued logging (per `ag-instrutions.md`).
+    *   Implement structured logging (per `ag-instrutions.md`).
 3.  **Iterate**: Run tests, fix bugs, refine code.
 
 ## 4. Verification Phase
