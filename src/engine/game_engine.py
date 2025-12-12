@@ -798,4 +798,9 @@ class GameEngine:
         report.net_income = event.net_income
         report.cash_beginning = event.cash_beginning
         report.cash_ending = event.cash_ending
+        # The following fields are not present in WeeklyReportGenerated and will default to 0.0:
+        #   - expense_marketing
+        #   - income_interest
+        #   - fines
+        # If these fields become relevant, update WeeklyReportGenerated and this method accordingly.
         return report
