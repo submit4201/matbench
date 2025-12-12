@@ -13,7 +13,9 @@ import {
   Bug,
   Menu,
   X,
+  TrendingUp,
 } from 'lucide-react';
+import type { Message } from './types';
 import { useGameStore } from './stores/gameStore';
 import { Dashboard, TurnControls } from './components/dashboard/index';
 import { FinancePanel } from './components/finance';
@@ -25,6 +27,8 @@ import VendorHub from './components/vendors/VendorHub';
 import NeighborhoodView from './components/neighborhood/NeighborhoodView';
 import HistoryViewer from './components/history/HistoryViewer';
 import Scoreboard from './components/scoreboard/Scoreboard';
+import { MarketPanel } from './components/market';
+import { CalendarPanel } from './components/calendar';
 
 // ═══════════════════════════════════════════════════════════════════════
 // GameShell Component
@@ -39,8 +43,9 @@ const navItems = [
   { id: 'messages', label: 'Messages', icon: MessageSquare, hasBadge: true },
   { id: 'social', label: 'Social', icon: Users },
   { id: 'vendors', label: 'Vendors', icon: Store },
+  { id: 'market', label: 'Market', icon: TrendingUp },
   { id: 'neighborhood', label: 'Neighborhood', icon: Map },
-  { id: 'history', label: 'History', icon: History },
+  { id: 'calendar', label: 'Calendar', icon: History },
   { id: 'scoreboard', label: 'Scoreboard', icon: Trophy },
 ];
 
@@ -56,7 +61,7 @@ export default function GameShell({ onRestart }: GameShellProps) {
 
   // Selector for unread count to ensure reactivity
   const unreadCount = useGameStore((state) =>
-    state.gameState?.messages?.filter((m) => !m.is_read).length ?? 0
+    state.gameState?.messages?.filter((m: Message) => !m.is_read).length ?? 0
   );
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -88,8 +93,12 @@ export default function GameShell({ onRestart }: GameShellProps) {
         return <NeighborhoodView />;
       case 'history':
         return <HistoryViewer />;
+      case 'calendar':
+        return <CalendarPanel />;
       case 'scoreboard':
         return <Scoreboard />;
+      case 'market':
+        return <MarketPanel />;
       default:
         return <Dashboard />;
     }

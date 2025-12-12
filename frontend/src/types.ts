@@ -5,72 +5,62 @@
 // Enums
 // ═══════════════════════════════════════════════════════════════════════
 
-export enum SocialTier {
-  COMMUNITY_HERO = "Community Hero",
-  TRUSTED_BUSINESS = "Trusted Business",
-  GOOD_STANDING = "Good Standing",
-  NEUTRAL_STANDING = "Neutral Standing",
-  QUESTIONABLE_REPUTATION = "Questionable Reputation",
-  COMMUNITY_CONCERN = "Community Concern",
-  NEIGHBORHOOD_PARIAH = "Neighborhood Pariah"
-}
+export type SocialTier =
+  | "Community Hero"
+  | "Trusted Business"
+  | "Good Standing"
+  | "Neutral Standing"
+  | "Questionable Reputation"
+  | "Community Concern"
+  | "Neighborhood Pariah";
 
-export enum TicketType {
-  OUT_OF_SOAP = "out_of_soap",
-  MACHINE_BROKEN = "machine_broken",
-  DIRTY_FLOOR = "dirty_floor",
-  LONG_WAIT = "long_wait",
-  OTHER = "other"
-}
+export type TicketType =
+  | "out_of_soap"
+  | "machine_broken"
+  | "dirty_floor"
+  | "long_wait"
+  | "other";
 
-export enum TicketStatus {
-  OPEN = "open",
-  RESOLVED = "resolved",
-  EXPIRED = "expired"
-}
+export type TicketStatus = "open" | "resolved" | "expired";
 
-export enum PaymentStatus {
-  ON_TIME = "on_time",
-  LATE_30 = "late_30",
-  LATE_60 = "late_60",
-  LATE_90 = "late_90",
-  MISSED = "missed",
-  SCHEDULED = "scheduled"
-}
+export type PaymentStatus =
+  | "on_time"
+  | "late_30"
+  | "late_60"
+  | "late_90"
+  | "missed"
+  | "scheduled";
 
-export enum CreditRating {
-  EXCEPTIONAL = "exceptional",
-  VERY_GOOD = "very_good",
-  GOOD = "good",
-  FAIR = "fair",
-  POOR = "poor"
-}
+export type CreditRating =
+  | "exceptional"
+  | "very_good"
+  | "good"
+  | "fair"
+  | "poor";
 
-export enum TransactionCategory {
-  REVENUE = "revenue",
-  EXPENSE = "expense",
-  LOAN = "loan",
-  REPAYMENT = "repayment",
-  TAX = "tax",
-  ADJUSTMENT = "adjustment",
-  GRANT = "grant",
-  CAPITAL = "capital",
-  TRANSFER = "transfer",
-  REAL_ESTATE = "real_estate"
-}
+export type TransactionCategory =
+  | "revenue"
+  | "expense"
+  | "loan"
+  | "repayment"
+  | "tax"
+  | "adjustment"
+  | "grant"
+  | "capital"
+  | "transfer"
+  | "real_estate";
 
-export enum EventCategory {
-  TICKET = "ticket",
-  DILEMMA = "dilemma",
-  MESSAGE = "message",
-  TRADE = "trade",
-  REGULATOR = "regulator",
-  GAME_MASTER = "game_master",
-  ALLIANCE = "alliance",
-  MARKET = "market",
-  ACHIEVEMENT = "achievement",
-  SYSTEM = "system"
-}
+export type EventCategory =
+  | "ticket"
+  | "dilemma"
+  | "message"
+  | "trade"
+  | "regulator"
+  | "game_master"
+  | "alliance"
+  | "market"
+  | "achievement"
+  | "system";
 
 // ═══════════════════════════════════════════════════════════════════════
 // API Request Models
@@ -381,14 +371,28 @@ export interface AIThought {
   raw_response?: string;
   [key: string]: any;
 }
+/*
+shouldnt we have gamestate [the whole games state]
+then have agent or player states?
+beyond that then have location states?
 
+then we can have gamestate listeners
+then have player listeners
+then have location listeners
+then have ai listeners
+
+then we can have gamestate actions
+then have player actions
+then have location actions
+then have ai actions
+**/
 export interface GameState {
   week: number;
   day: string;
   phase: string;
   season: string;
   laundromats: { [key: string]: Laundromat };
-  events: string[]; // Descriptions? Or full events? API says: [e.description for e in active_events]
+  events: string[]; // Descriptions? Or full events? API says: [e.description for e in active_events] # !full events !
   messages: Message[];
   market: {
     vendors: Vendor[];
@@ -405,9 +409,18 @@ export interface GameState {
 // Restored Manual Types
 // ═══════════════════════════════════════════════════════════════════════
 
+export interface CreditScoreBreakdown {
+  payment_history: number;
+  utilization: number;
+  history_length: number;
+  credit_mix: number;
+  new_credit: number;
+}
+
 export interface CreditReport {
   credit_score: number;
   rating: string;
+  score_breakdown: CreditScoreBreakdown;
   active_loans: Loan[];
   payment_history: PaymentRecord[];
   total_debt: number;

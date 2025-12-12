@@ -1,231 +1,169 @@
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import model_validator
 from src.config import settings
-from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, Bill, FinancialReport, TransactionCategory
+from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport, TransactionCategory
 from src.models.base import GameModel
-from src.models.social import SocialScore, Ticket
 
-class Machine(GameModel):
-    id: str
-    type: str = "standard_washer"
-    condition: float = 1.0
-    is_broken: bool = False
-    age_weeks: int = 0
-    location_id: Optional[str] = None
-
-class StaffMember(GameModel):
-    id: str
-    name: str
-    role: str = "attendant"
-    skill_level: float = 0.5
-    morale: float = 0.8
-    wage: float = 15.0
-
-class Building(GameModel):
-    id: str
-    name: str
-    type: str = "storefront"
-    condition: float = 1.0
-    capacity_machines: int = 20
-    location_multiplier: float = 1.0
-    price: float = 0.0
-    rent: float = 0.0
+# Import from hierarchy to maintain compatibility and use new definitions
+from src.models.hierarchy import (
+    Machine, Building, 
+    AgentState, LocationState
+)
+from src.models.social import SocialScore
 
 class LaundromatState(GameModel):
-    name: str
+    """
+    DEPRECATED: This class is being replaced by AgentState and LocationState.
+    It currently acts as a compatibility layer or 'Session State' holding both.
+    Methods have been removed to enforce pure data separation.
+    """
     id: str
-    ledger: FinancialLedger = Field(default_factory=FinancialLedger)
-    # event_ledger: Any = None # Skip for now or use Any, circular dep with GameEventLedger?
-    # bills: List[Bill] = Field(default_factory=list)
+    name: str # Agent Name? Or Laundromat Name?
     
-    # Internal reputation storage
-    _reputation: float = PrivateAttr(default=50.0)
+    # Composition
+    agent: Optional[AgentState] = None
+    primary_location: Optional[LocationState] = None
     
-    # Social Score (Pydantic model with computed properties)
-    social_score: SocialScore = Field(default_factory=SocialScore)
-    
-    price: float = settings.economy.default_price
-    
-    # Real Estate
-    buildings: List[Building] = Field(default_factory=list)
-    locations: List[str] = Field(default_factory=list)
-    
-    # Assets
-    machines: List[Machine] = Field(default_factory=list)
-    staff: List[StaffMember] = Field(default_factory=list)
-    
-    # Inventory
-    inventory: Dict[str, int] = Field(default_factory=lambda: {
-        "detergent": 200,
-        "softener": 100,
-        "dryer_sheets": 150,
-        "snacks": 50,
-        "cleaning_supplies": 14,
-        "parts": 5
-    })
-    
-    # Status
-    marketing_boost: float = 0.0
-    cleanliness: float = 0.8
-    security_level: float = 0.5
-    avg_daily_burn_rate: float = 20.0
-    active_customers: int = 0
-    
-    # Financials
-    revenue_streams: Dict[str, RevenueStream] = Field(default_factory=dict)
-    loans: List[Loan] = Field(default_factory=list)
-    financial_reports: List[FinancialReport] = Field(default_factory=list)
-    
-    # Supply
-    pending_deliveries: List[Dict[str, Any]] = Field(default_factory=list)
-    
-    # History
-    history: Dict[str, List[float]] = Field(default_factory=lambda: {
-        "balance": [],
-        "reputation": [],
-        "social_score": [],
-        "revenue": [],
-        "expenses": [],
-        "customers": []
-    })
-    
-    # Active Data
-    tickets: List[Ticket] = Field(default_factory=list)
-    active_events: List[str] = Field(default_factory=list)
+    @model_validator(mode='before')
+    @classmethod
+    def compat_mapper(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Extract basic ID/Name
+            uid = data.get('id')
+            name = data.get('name')
+            
+            # Agent Init
+            if data.get('agent') is None and uid:
+                # Handle social_score int -> SocialScore obj
+                ss = data.get('social_score')
+                ss_obj = None
+                if isinstance(ss, (int, float)):
+                    ss_obj = SocialScore(community_standing=float(ss))
+                elif isinstance(ss, SocialScore):
+                    ss_obj = ss
+                
+                agent_data = {'id': uid, 'name': name}
+                if ss_obj:
+                    agent_data['social_score'] = ss_obj
+                    
+                data['agent'] = AgentState(**agent_data)
+                
+            # Location Init
+            if data.get('primary_location') is None and uid:
+                loc_data = {'id': f"loc-{uid}", 'name': f"{name} HQ", 'agent_id': uid}
+                if 'price' in data:
+                    loc_data['price'] = data['price']
+                if 'inventory' in data:
+                    loc_data['inventory'] = data['inventory']
+                if 'machines' in data:
+                    # Ensure machines are handled. If list of objs, pass directly.
+                    # If Main passes list of Machine, it works.
+                    loc_data['machines'] = data['machines']
+                
+                data['primary_location'] = LocationState(**loc_data)
+        return data
 
     def model_post_init(self, __context):
-        """Logic run after initialization (Pydantic V2)."""
-        # Initialize machines if empty
-        if not self.machines:
-            for i in range(10):
-                self.machines.append(Machine(id=f"W{i}", type="standard_washer", condition=0.80))
-            for i in range(5):
-                self.machines.append(Machine(id=f"D{i}", type="standard_dryer", condition=0.80))
-        
-        # Seed initial capital if ledger is empty
-        if not self.ledger.transactions:
-             self.ledger.add(settings.economy.initial_balance, TransactionCategory.CAPITAL, "Initial Capital", week=0)
-
-        # Initialize default building if none
-        if not self.buildings:
-            default_building = Building(
-                id=f"HQ-{self.id}",
-                name=f"{self.name} Headquarters",
-                type="storefront",
-                condition=1.0,
-                capacity_machines=20,
-                location_multiplier=1.0
-            )
-            self.buildings.append(default_building)
-            self.locations.append(default_building.id)
+        # Initialize sub-states if empty (double safe)
+        if self.agent is None:
+             self.agent = AgentState(id=self.id, name=self.name)
             
-            # Assign initial machines to this location
-            for m in self.machines:
-                m.location_id = default_building.id
-
-    @property
-    def broken_machines(self) -> int:
-        return sum(1 for m in self.machines if m.is_broken)
-
-    @property
-    def reputation(self) -> float:
-        """Reputation is now directly linked to Social Score."""
-        return self.social_score.total_score
+        if self.primary_location is None:
+            self.primary_location = LocationState(id=f"loc-{self.id}", name=f"{self.name} - HQ", agent_id=self.id)
+            
+            # Initialize default assets in primary location
+            if not self.primary_location.machines:
+                for i in range(10):
+                    self.primary_location.machines.append(Machine(id=f"W{i}", type="standard_washer", condition=0.80))
+                for i in range(5):
+                    self.primary_location.machines.append(Machine(id=f"D{i}", type="standard_dryer", condition=0.80))
+            
+            if not self.primary_location.buildings:
+                default_building = Building(
+                    id=f"HQ-{self.id}",
+                    name=f"{self.name} Headquarters",
+                    type="storefront",
+                    condition=1.0,
+                    capacity_machines=20,
+                    location_multiplier=1.0
+                )
+                self.primary_location.buildings.append(default_building)
         
-    @reputation.setter
-    def reputation(self, value: float):
-        self._reputation = value
-        # Update social score component
-        self.social_score.community_standing = value
-
+        # Seed capital
+        if not self.agent.ledger.transactions:
+             self.agent.ledger.add(settings.economy.initial_balance, TransactionCategory.CAPITAL, "Initial Capital", week=0)
+             
+    # --- Proxy Properties for Backward Compatibility ---
+    
+    @property
+    def machines(self) -> List[Machine]:
+        return self.primary_location.machines
+    
+    @machines.setter
+    def machines(self, value):
+        self.primary_location.machines = value
+        
+    @property
+    def inventory(self) -> Dict[str, int]:
+        return self.primary_location.inventory
+        
     @property
     def balance(self) -> float:
-        return self.ledger.balance
+        return self.agent.balance
         
     @balance.setter
-    def balance(self, value: float):
-        """Allow setting balance directly by creating an adjustment transaction."""
-        current = self.ledger.balance
+    def balance(self, value):
+        # Direct setter supported for compat, though logic removed
+        # Ideally we use an action to update balance.
+        current = self.agent.ledger.balance
         diff = value - current
         if abs(diff) > 0.001:
-            self.ledger.add(diff, TransactionCategory.ADJUSTMENT, "Manual Balance Adjustment", week=0)
+            self.agent.ledger.add(diff, TransactionCategory.ADJUSTMENT, "Manual Balance Adjustment", week=0)
 
-    def update_reputation(self, delta: float):
-        self.update_social_score("community_standing", delta)
+    @property
+    def social_score(self):
+        return self.agent.social_score
+        
+    @property
+    def reputation(self) -> float:
+        return self.agent.reputation
+        
+    @reputation.setter
+    def reputation(self, value):
+        self.agent.reputation = value
 
-    def update_social_score(self, component: str, delta: float):
-        """Update a social score component by delta."""
-        if hasattr(self.social_score, component):
-            current = getattr(self.social_score, component)
-            new_val = max(0.0, min(100.0, current + delta))
-            setattr(self.social_score, component, new_val)
-    
-    def update_inventory_usage(self, usage: Dict[str, int]):
-        """Update inventory based on usage and recalculate burn rate."""
-        total_loads = usage.get("detergent", 0)
+    @property
+    def price(self) -> float:
+        return self.primary_location.price
         
-        # Update stock
-        for item, amount in usage.items():
-            if item in self.inventory:
-                self.inventory[item] = max(0, self.inventory[item] - amount)
-                
-        # Update burn rate (simple moving average)
-        daily_usage = total_loads / 7.0
-        alpha = 0.3 # Smoothing factor
-        self.avg_daily_burn_rate = (alpha * daily_usage) + ((1 - alpha) * self.avg_daily_burn_rate)
+    @price.setter
+    def price(self, value):
+        self.primary_location.price = value
+        
+    @property
+    def active_customers(self) -> int:
+        return self.primary_location.active_customers
+        
+    @active_customers.setter
+    def active_customers(self, value):
+        self.primary_location.active_customers = value
 
-    def get_inventory_metrics(self) -> Dict[str, Any]:
-        """Calculate inventory health metrics."""
-        burn_rate = self.avg_daily_burn_rate
-        if burn_rate <= 0: burn_rate = 1.0
+    @property
+    def marketing_boost(self) -> float:
+        return self.primary_location.marketing_boost
         
-        detergent_stock = self.inventory.get("detergent", 0)
-        days_supply = detergent_stock / burn_rate
-        
-        target_days = 14
-        reorder_point = 9
-        
-        status = "Good"
-        if days_supply < 3:
-            status = "Critical"
-        elif days_supply < reorder_point:
-            status = "Low"
-            
-        return {
-            "stock_level": detergent_stock,
-            "burn_rate": round(burn_rate, 1),
-            "days_of_supply": round(days_supply, 1),
-            "status": status,
-            "recommendation": f"Buy {int((target_days - days_supply) * burn_rate)} loads" if days_supply < target_days else "Stock is healthy"
-        }
-    
-    def process_week(self, revenue: float, expenses: float):
-        # Archive current state to history
-        self.history["balance"].append(self.balance)
-        self.history["reputation"].append(self.reputation)
-        self.history["social_score"].append(self.social_score.total_score)
-        self.history["revenue"].append(revenue)
-        self.history["expenses"].append(expenses)
-        self.history["customers"].append(self.active_customers)
-        
-        # Decay marketing boost naturally over time
-        if self.marketing_boost > 0:
-            decay = settings.economy.marketing_decay_rate
-            self.marketing_boost = max(0, self.marketing_boost - decay)
-            
-        # Machine wear and tear
-        for machine in self.machines:
-            if not machine.is_broken:
-                machine.condition = max(0, machine.condition - settings.simulation.machine_wear_rate)
-                machine.age_weeks += 1
-                if machine.condition < settings.simulation.machine_breakdown_threshold:
-                    import random
-                    if random.random() < settings.simulation.machine_breakdown_chance:
-                        machine.is_broken = True
+    @marketing_boost.setter
+    def marketing_boost(self, value):
+        self.primary_location.marketing_boost = value
 
-    def add_funds(self, amount: float, category: str, description: str, week: int):
-         try:
-             cat = TransactionCategory(category)
-         except ValueError:
-             cat = TransactionCategory.ADJUSTMENT
-         self.ledger.add(amount, cat, description, week)
+    @property
+    def tickets(self):
+        return self.primary_location.tickets
+        
+    @property
+    def revenue_streams(self) -> Dict[str, RevenueStream]:
+        return self.primary_location.revenue_streams
+
+    # --- REMOVED METHODS ---
+    # update_reputation, update_social_score, update_inventory_usage, process_week
+    # These must be handled by the Engine or Services now.

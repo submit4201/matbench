@@ -56,6 +56,8 @@ class MessageIntent(Enum):
     NEGOTIATION = "negotiation"
     DILEMMA = "dilemma"
     DILEMMA_OUTCOME = "dilemma_outcome"
+    REMINDER = "reminder"       # Bill/payment reminders
+    OVERDUE = "overdue"         # Overdue bill notices
 
 
 @dataclass

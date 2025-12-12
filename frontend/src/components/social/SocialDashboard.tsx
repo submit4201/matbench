@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useGameStore } from '../../stores/gameStore';
 import { Card, Badge, Button } from '../shared';
+import CustomerChatter from './CustomerChatter';
 
 // ═══════════════════════════════════════════════════════════════════════
 // SocialDashboard Component
@@ -132,6 +133,10 @@ export default function SocialDashboard() {
           )}
         </div>
       )}
+
+
+      {/* Customer Chatter */}
+      <CustomerChatter />
 
       {/* Alliances / Diplomacy */}
       <Card variant="glass">

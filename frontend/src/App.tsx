@@ -4,6 +4,7 @@ import LandingPage from './LandingPage';
 import GameSetup from './GameSetup';
 import type { GameConfig } from './GameSetup';
 import { useGameStore } from './stores/gameStore';
+import { Toaster } from 'sonner';
 
 // ═══════════════════════════════════════════════════════════════════════
 // App Component
@@ -38,16 +39,14 @@ function App() {
     setGameConfig(null);
   };
 
-  switch (view) {
-    case 'landing':
-      return <LandingPage onGetStarted={handleGetStarted} />;
-    case 'setup':
-      return <GameSetup onStart={handleStartGame} onBack={handleBackToLanding} />;
-    case 'game':
-      return <GameShell onRestart={handleRestart} />;
-    default:
-      return <LandingPage onGetStarted={handleGetStarted} />;
-  }
+  return (
+    <>
+      <Toaster position="top-right" richColors />
+      {view === 'landing' && <LandingPage onGetStarted={handleGetStarted} />}
+      {view === 'setup' && <GameSetup onStart={handleStartGame} onBack={handleBackToLanding} />}
+      {view === 'game' && <GameShell onRestart={handleRestart} />}
+    </>
+  );
 }
 
 export default App;

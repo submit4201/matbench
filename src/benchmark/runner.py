@@ -163,7 +163,9 @@ class BenchmarkRunner:
             for aid, p in laundromats.items():
                 revenue = weekly_revenue[aid]
                 expenses = 100
-                p.process_week(revenue, expenses)
+                # p.process_week(revenue, expenses)
+                from src.engine.processing import process_week_logic
+                process_week_logic(p, revenue, expenses)
                 
                 cumulative_revenue[aid] += revenue
                 cumulative_visits[aid] += weekly_visits[aid]

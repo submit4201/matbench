@@ -976,3 +976,165 @@ Score this interaction."""
             "news": self.news_archive[-5:],
             "constraints": self.constraints
         }
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # VENDOR ROLEPLAY (GM acts as vendor during negotiations)
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    def roleplay_as_vendor(
+        self,
+        vendor_profile: Dict[str, Any],
+        player_message: str,
+        negotiation_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        GM roleplays as the vendor during price negotiations.
+        
+        Args:
+            vendor_profile: Vendor's name, slogan, personality, base_prices
+            player_message: The player's negotiation message
+            negotiation_context: Item being negotiated, player reputation, current price, etc.
+            
+        Returns:
+            Dict with vendor_response, accepted (bool), offered_price (optional)
+        """
+        if self.llm_client:
+            return self._llm_roleplay_vendor(vendor_profile, player_message, negotiation_context)
+        else:
+            return self._fallback_vendor_response(vendor_profile, player_message, negotiation_context)
+    
+    def _llm_roleplay_vendor(
+        self,
+        vendor_profile: Dict[str, Any],
+        player_message: str,
+        negotiation_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Use LLM to roleplay as the vendor."""
+        try:
+            from google.genai import types
+            
+            item = negotiation_context.get("item", "supplies")
+            base_price = negotiation_context.get("base_price", 10.0)
+            current_price = negotiation_context.get("current_price", base_price)
+            player_reputation = negotiation_context.get("player_reputation", 50)
+            order_history = negotiation_context.get("order_history", 0)
+            conversation_history = negotiation_context.get("conversation_history", [])
+            
+            # Build conversation history string
+            history_lines = []
+            for entry in conversation_history[-6:]:  # Last 6 exchanges
+                role = "Player" if entry.get("role") == "player" else vendor_profile.get('name', 'Vendor')
+                msg = entry.get("message", "")
+                if entry.get("offered_price"):
+                    history_lines.append(f"{role}: {msg} (Offered: ${entry['offered_price']:.2f})")
+                else:
+                    history_lines.append(f"{role}: {msg}")
+            
+            history_section = ""
+            if history_lines:
+                history_section = f"""
+PREVIOUS CONVERSATION:
+{chr(10).join(history_lines)}
+
+CONTINUE THE NEGOTIATION based on what was discussed above.
+"""
+            
+            system_prompt = f"""You are {vendor_profile.get('name', 'Vendor')}, a supply vendor in a laundromat business simulation.
+
+PERSONALITY:
+- Slogan: "{vendor_profile.get('slogan', 'Quality supplies!')}"
+- Description: {vendor_profile.get('description', 'A reliable vendor.')}
+- Reliability: {vendor_profile.get('reliability', 0.8):.0%}
+
+NEGOTIATION RULES:
+- Base price for {item}: ${base_price:.2f}
+- Current offered price: ${current_price:.2f}
+- Player reputation: {player_reputation}/100 (higher = more trustworthy)
+- Past orders from this player: {order_history}
+- Minimum acceptable discount: 5% (for loyal customers)
+- Maximum discount possible: 20% (for excellent reputation + bulk orders)
+{history_section}
+BEHAVIOR:
+- Stay in character as this vendor
+- Be professional but show personality
+- If player reputation is low (<40), be skeptical
+- If reputation is high (>70), be friendly and flexible
+- You can offer a discount between 0-20% based on the conversation
+- Remember previous offers you made - don't contradict yourself
+- If player is persistent and reasonable, consider improving your offer
+- Respond with natural vendor dialogue
+
+Respond with a JSON object:
+{{
+  "vendor_response": "Your in-character response to the player",
+  "accepted": true/false (did you agree to a deal?),
+  "offered_price": number (only if offering a new price),
+  "discount_percent": number (0-20, only if offering discount),
+  "reasoning": "Brief internal reasoning (not shown to player)"
+}}"""
+
+            prompt = f"""{system_prompt}
+
+PLAYER MESSAGE:
+"{player_message}"
+
+Respond as {vendor_profile.get('name')} in JSON format:"""
+
+
+            response = self.llm_client.models.generate_content(
+                model=self.deployment,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    max_output_tokens=500
+                )
+            )
+            
+            if response.text:
+                result = json.loads(response.text)
+                # Validate and constrain values
+                max_discount = 0.20
+                if result.get("discount_percent", 0) > 20:
+                    result["discount_percent"] = 20
+                if result.get("offered_price"):
+                    min_price = base_price * (1 - max_discount)
+                    result["offered_price"] = max(min_price, result["offered_price"])
+                return result
+            
+            return self._fallback_vendor_response(vendor_profile, player_message, negotiation_context)
+            
+        except Exception as e:
+            logger.error(f"LLM vendor roleplay failed: {e}")
+            return self._fallback_vendor_response(vendor_profile, player_message, negotiation_context)
+    
+    def _fallback_vendor_response(
+        self,
+        vendor_profile: Dict[str, Any],
+        player_message: str,
+        negotiation_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Fallback rule-based vendor response."""
+        base_price = negotiation_context.get("base_price", 10.0)
+        player_reputation = negotiation_context.get("player_reputation", 50)
+        
+        # Simple discount logic based on reputation
+        if player_reputation >= 70:
+            discount = 0.10
+            response = f"Since you're a valued customer, I can offer {negotiation_context.get('item', 'this')} at ${base_price * 0.9:.2f}. That's my best price."
+            accepted = True
+        elif player_reputation >= 50:
+            discount = 0.05
+            response = f"I can do ${base_price * 0.95:.2f} for you. Fair price for a fair customer."
+            accepted = True
+        else:
+            discount = 0
+            response = f"I appreciate the interest, but ${base_price:.2f} is my standard rate. Build up your reputation a bit and we can talk discounts."
+            accepted = False
+        
+        return {
+            "vendor_response": response,
+            "accepted": accepted,
+            "offered_price": base_price * (1 - discount) if discount > 0 else base_price,
+            "discount_percent": discount * 100,
+            "reasoning": "Rule-based fallback response"
+        }

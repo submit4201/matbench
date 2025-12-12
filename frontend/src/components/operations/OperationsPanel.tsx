@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Wrench,
   Megaphone,
@@ -28,12 +28,20 @@ const tabs = [
 ];
 
 export default function OperationsPanel() {
-  const { getPlayerLaundromat, sendAction, isLoading, getCompetitors } = useGameStore();
+  const { getPlayerLaundromat, sendAction, isLoading, getCompetitors, getVendors } = useGameStore();
   const laundromat = getPlayerLaundromat();
   const competitors = getCompetitors();
+  const _vendors = getVendors(); // Keep for potential future use
 
   // Local state for sliders
   const [newPrice, setNewPrice] = useState(laundromat?.price ?? 3.0);
+
+  // ! Sync local price state with Zustand store when game state updates
+  useEffect(() => {
+    if (laundromat?.price !== undefined) {
+      setNewPrice(laundromat.price);
+    }
+  }, [laundromat?.price]);
 
   if (!laundromat) {
     return (
@@ -44,7 +52,7 @@ export default function OperationsPanel() {
   }
 
   const handleSetPrice = () => {
-    sendAction('SET_PRICE', { new_price: newPrice });
+    sendAction('SET_PRICE', { price: newPrice });
   };
 
   const handleLaunchCampaign = (campaignType: string, cost: number) => {
@@ -52,11 +60,19 @@ export default function OperationsPanel() {
   };
 
   const handleRepairMachines = () => {
-    sendAction('REPAIR_MACHINES', {});
+    sendAction('PERFORM_MAINTENANCE', {});
+  };
+
+  const handleEmergencyRepair = () => {
+    sendAction('EMERGENCY_REPAIR', {});
   };
 
   const handleHireStaff = () => {
     sendAction('HIRE_STAFF', { cost: 100, role: 'Attendant' });
+  };
+
+  const handleUpgradeMachine = () => {
+    sendAction('UPGRADE_MACHINE', {});
   };
 
   // Average competitor price
@@ -173,7 +189,7 @@ export default function OperationsPanel() {
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
                 <div className="text-3xl font-bold text-emerald-400">
-                  {laundromat.machines - laundromat.broken_machines}
+                  {(Array.isArray(laundromat.machines) ? laundromat.machines.length : laundromat.machines) - laundromat.broken_machines}
                 </div>
                 <div className="text-xs text-slate-400 uppercase">Working</div>
               </div>
@@ -185,22 +201,60 @@ export default function OperationsPanel() {
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <Button
                 variant="secondary"
                 onClick={handleRepairMachines}
                 loading={isLoading}
-                disabled={laundromat.broken_machines === 0}
-                className="flex-1"
+                disabled={(laundromat.inventory?.parts || 0) < 1}
+                className="flex-1 text-xs px-2"
+                title="Improve condition of all machines (Uses 1 part/5 machines)"
               >
-                <Wrench className="w-4 h-4" />
-                Repair All (${laundromat.broken_machines * 50})
+                <Wrench className="w-3 h-3 mr-1" />
+                Maintain (Parts)
               </Button>
-              <Button variant="ghost" className="flex-1">
-                <Gauge className="w-4 h-4" />
-                Upgrade
+              <Button
+                variant="danger"
+                onClick={handleEmergencyRepair}
+                loading={isLoading}
+                disabled={laundromat.broken_machines === 0}
+                className="flex-1 text-xs px-2"
+                title="Instantly fix all broken machines (High Cost)"
+              >
+                <Zap className="w-3 h-3 mr-1" />
+                Quick Fix (${laundromat.broken_machines * 150})
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 text-xs px-2"
+                onClick={handleUpgradeMachine}
+                loading={isLoading}
+                title="Purchase New Machine"
+              >
+                <Gauge className="w-3 h-3 mr-1" />
+                Buy ($500)
               </Button>
             </div>
+
+            {Array.isArray(laundromat.machines) && (
+              <div className="mt-6 space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                <h4 className="text-sm font-medium text-slate-300 mb-2">Facility Equipment</h4>
+                {laundromat.machines.map((m: any) => (
+                  <div key={m.id} className="p-3 rounded-lg bg-white/5 flex justify-between items-center text-sm">
+                    <div>
+                      <div className="font-medium text-white capitalize">{m.type?.replace(/_/g, ' ') || 'Machine'} <span className="text-xs text-slate-500 ml-1">#{m.id}</span></div>
+                      <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                        <span>Cond: {(Number(m.condition || 0) * 100).toFixed(0)}%</span>
+                        {m.age_weeks > 0 && <span>Age: {m.age_weeks}w</span>}
+                      </div>
+                    </div>
+                    <Badge variant={m.is_broken ? 'warning' : 'success'} size="sm">
+                      {m.is_broken ? 'Broken' : 'Ready'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </TabContent>
 
@@ -308,64 +362,41 @@ export default function OperationsPanel() {
           </div>
         </TabContent>
 
-        {/* Supplies Tab */}
+        {/* Supplies Tab - Redirect to Vendors */}
         <TabContent value="supplies">
-          <Card variant="glass">
-            <h3 className="text-lg font-semibold text-white mb-4">Inventory Levels</h3>
-            <div className="space-y-4">
-              {Object.entries(laundromat.inventory).map(([item, quantity]) => {
-                // Determine low stock threshold
-                const isLow = (quantity as number) < 20;
-                return (
-                  <div key={item} className="space-y-2 p-3 bg-white/5 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-200 capitalize font-medium">{item.replace(/_/g, ' ')}</span>
-                          {isLow && <Badge variant="warning" size="sm">Low</Badge>}
-                        </div>
-                        <span className="text-xs text-slate-400">{(quantity as number)} units in stock</span>
-                      </div>
+          <Card variant="glass" className="text-center py-12">
+            <Package className="w-12 h-12 mx-auto text-slate-500 mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">Supply Ordering Moved</h3>
+            <p className="text-slate-400 mb-4">
+              Order supplies directly from the <strong>Vendors</strong> tab for vendor-specific pricing and negotiation.
+            </p>
+            <Button
+              variant="primary"
+              onClick={() => useGameStore.getState().setActiveTab('vendors')}
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Go to Vendors
+            </Button>
 
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => sendAction('BUY_SUPPLIES', { item: item, quantity: 20 })}
-                          loading={isLoading}
-                          title={`Buy 20 ${item}`}
-                        >
-                          +20
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => sendAction('BUY_SUPPLIES', { item: item, quantity: 50 })}
-                          loading={isLoading}
-                          title={`Buy 50 ${item}`}
-                        >
-                          +50
-                        </Button>
+            {/* Still show pending deliveries */}
+            {laundromat.pending_deliveries && laundromat.pending_deliveries.length > 0 && (
+              <div className="mt-6 border-t border-white/10 pt-4 text-left">
+                <h4 className="text-md font-semibold text-white mb-3">Pending Deliveries</h4>
+                <div className="space-y-2">
+                  {laundromat.pending_deliveries.map((delivery, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-2 bg-slate-800/50 rounded border border-slate-700/50 text-sm">
+                      <div>
+                        <span className="text-slate-200 font-medium capitalize">{delivery.item.replace(/_/g, ' ')}</span>
+                        <span className="text-slate-400 ml-2">x{delivery.quantity}</span>
+                      </div>
+                      <div className="text-slate-400 text-xs">
+                        Arrives Week {delivery.arrival_week}
                       </div>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all ${(quantity as number) > 50
-                          ? 'bg-emerald-500'
-                          : (quantity as number) > 20
-                            ? 'bg-amber-500'
-                            : 'bg-red-500'
-                          }`}
-                        style={{ width: `${Math.min((quantity as number), 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="mt-4 text-xs text-center text-slate-500">
-              Supplies take 1-3 days to arrive correctly.
-            </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
         </TabContent>
       </TabGroup>

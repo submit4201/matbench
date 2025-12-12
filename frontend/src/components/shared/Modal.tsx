@@ -72,11 +72,9 @@ export function Modal({
                         {title}
                       </Dialog.Title>
                     )}
-                    {description && (
-                      <Dialog.Description className="text-sm text-slate-400 mt-1">
-                        {description}
-                      </Dialog.Description>
-                    )}
+                    <Dialog.Description className={description ? "text-sm text-slate-400 mt-1" : "sr-only"}>
+                      {description || "Modal content"}
+                    </Dialog.Description>
                   </div>
                   <Dialog.Close asChild>
                     <button className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
@@ -84,7 +82,7 @@ export function Modal({
                     </button>
                   </Dialog.Close>
                 </div>
-                
+
                 {/* Content */}
                 {children}
               </motion.div>

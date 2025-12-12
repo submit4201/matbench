@@ -26,7 +26,7 @@ interface GameStore {
   fetchState: () => Promise<void>;
   nextTurn: () => Promise<void>;
   nextDay: () => Promise<void>;
-  sendAction: (actionType: string, params: Record<string, unknown>) => Promise<void>;
+  sendAction: (actionType: string, params: Record<string, unknown>) => Promise<boolean>;
   negotiate: (vendorId: string, item: string) => Promise<{ accepted: boolean; new_price?: number; message?: string }>;
   resetGame: () => Promise<void>;
   startScenario: (scenarioName: string | null) => Promise<void>;
@@ -115,8 +115,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!response.ok) throw new Error(`Failed to send action: ${response.statusText}`);
       // Refetch state after action
       await get().fetchState();
+      return true;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Unknown error', isLoading: false });
+      return false;
     }
   },
 
@@ -177,8 +179,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       const response = await fetch(`${API_BASE}/credit/${playerId}`);
       if (!response.ok) throw new Error(`Failed to fetch credit: ${response.statusText}`);
-      const data: CreditReport = await response.json();
-      set({ creditReport: data });
+      const data = await response.json();
+      // Backend returns { credit: {...} }, extract the inner object
+      set({ creditReport: data.credit ?? data });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Unknown error' });
     }

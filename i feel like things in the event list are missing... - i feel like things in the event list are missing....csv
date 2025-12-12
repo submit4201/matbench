@@ -1,0 +1,115 @@
+Event Name,Fields,Trigger / Context
+TicketResolved,"ticket_id, resolution_method, cost_incurred","Records when the player clicks ""Resolve"" or ""Refund""."
+TicketIgnored,ticket_id,If a ticket expires or is dismissed by the player.
+Event Name,Fields,Trigger / Context
+VendorNegotiationStarted,"vendor_id, item_type, agent_id","Records that the player clicked the ""Negotiate"" button."
+VendorNegotiationOutcome,"vendor_id, success (bool), new_price_multiplier, message","Critical: Like proposals, the negotiation logic uses random chance (and potentially LLM). You must record the result (Success/Fail) so the replay is deterministic."
+VendorRelationshipUpdated,"vendor_id, agent_id, new_score",Records the relationship_scores change (Line 131 in vendor.py).
+Event Name,Fields,Trigger / Context
+BuyoutOfferSent,"proposal_id, buyer_id, target_id, offer_amount",Triggered by initiate_buyout. Records the intent to purchase a competitor.
+BuyoutOfferAccepted,"proposal_id, final_transaction_amount",Triggered in process_response (if accepted). Triggers the massive transfer of assets/machines.
+BuyoutOfferRejected,"proposal_id, rejection_reason",Triggered in process_response (if rejected).
+BuyoutFailedInsufficientFunds,"proposal_id, required, available",Triggered in process_response if the buyer tries to close the deal but went broke in the meantime.
+Event Name,Fields,Trigger / Context
+CustomerVisitStarted,"customer_id, laundromat_id, persona_segment",Triggered in decide_laundromat. Records who chose to visit you and why.
+CustomerVisitBounced,"customer_id, laundromat_id, reason (e.g., ""Vibe"")",Triggered in visit_laundromat when irrationality_factor causes them to leave immediately (Line 126).
+CustomerComplaintFiled,"ticket_id, customer_id, ticket_type, description, severity","Triggered by _create_ticket. This is the ""Ticket"" creation event."
+CustomerServiceCompleted,"customer_id, laundromat_id, revenue_generated",Triggered at the end of visit_laundromat if no issues occurred.
+CustomerSentimentRecorded,"customer_id, laundromat_id, thought_text, bias_delta","Triggered by record_experience. Captures the ""Current Thought"" bubble and the shift in their internal bias map (Love/Hate score)."
+Event Name,Fields,Trigger / Context
+ProposalSubmitted,"proposal_id, agent_id, name, category, setup_cost, description",Triggered when submit_proposal is called. Captures the player's initial idea.
+ProposalEvaluated,"proposal_id, feasibility_score, profitability, customer_appeal, reasoning",Triggered inside _evaluate_proposal. Critical: This captures the LLM's opinion so you don't have to re-query the AI when replaying history.
+ProposalApproved,"proposal_id, final_setup_cost, revenue_stream_name",Triggered by approve_proposal. This event implies money was deducted and a new RevenueStream was added to the agent's state.
+ProposalRejected,"proposal_id, reason (optional)",Triggered by reject_proposal. The player decided not to proceed after seeing the evaluation.
+Event Name,Fields,Why it's needed
+TimeAdvanced,"new_week, new_day, season","The ""Tick"" of your engine. Triggers weekly logic."
+MarketTrendChanged,"trend_name, impact_multiplier",Updates global variables in WorldState.
+WeatherChanged,"weather_type, intensity",Affects customer traffic generation.
+Event Name,Fields,Why it's needed
+TransactionRecorded,"amount, category, description, related_entity_id",The atom of your financial system. Replaying these builds the balance.
+BillIssued,"bill_id, amount, due_date, issuer",Creates a liability.
+BillPaid,"bill_id, amount_paid, late_fees",Resolves a liability.
+Event Name,Fields,Why it's needed
+MachinePurchased,"machine_id, model_type, price, location_id",Adds a machine to LocationState.
+MachineStateChanged,"machine_id, new_state (Broken/Idle/Running), condition",Records wear and tear or breakdowns.
+MaintenancePerformed,"location_id, cost, parts_used, machines_fixed",Records the PERFORM_MAINTENANCE action.
+StaffHired,"staff_id, role, wage, skill",Adds staff to LocationState.
+StaffActionLog,"staff_id, action_type (Trained/Fired/Quit)",modifications to staff roster.
+Event Name,Fields,Why it's needed (Code Reference)
+DilemmaTriggered,"dilemma_id, dilemma_type, agent_id, week",Records that a dilemma was presented to the user (Line 318 create_dilemma).
+DilemmaResolved,"dilemma_id, choice_id, outcome_text, effects: Dict",Records the player's decision (Line 341 resolve_dilemma).
+RiskConsequenceTriggered,"dilemma_id, penalty_applied, description","Handles the specific logic where a risky choice ""backfires"" (Line 378). Separating this allows you to analyze ""Bad Luck"" vs ""Bad Decisions."""
+ReputationChanged,"agent_id, delta, reason, source_event_id",Decouples the score calculation from the event that caused it.
+Event Name,Fields,Why it's needed (Code Reference)
+OrderPlaced,"order_id, vendor_id, items: Dict[str, int], total_cost, expected_delivery_date",Records the process_order call (Line 143). Deducts cash immediately.
+ShipmentShipped,"order_id, vendor_id, shipped_items, actual_delivery_date",Handles the logic where delivery_days might change due to supply chain events (Line 161).
+ShipmentReceived,"order_id, items_received",Adds items to LocationState.inventory. Handles PARTIAL_SHIPMENT or LOST_SHIPMENT logic (Lines 177-180).
+NegotiationAttempted,"vendor_id, item_type, success, negotiation_power",Logs the attempt in negotiate_price (Line 116). Vital for analyzing agent strategy.
+VendorDiscountGranted,"vendor_id, item_type, discount_multiplier, agent_id",Crucial: Replaces the direct mutation of self.negotiated_discounts (Line 126). Replaying this builds the discount table.
+VendorRelationshipChanged,"vendor_id, agent_id, new_score, change_reason",Tracks the relationship_scores updates (Line 131).
+Event Name,Fields,Trigger / Context
+FundsTransferred,"transaction_id, amount, category, description, week, related_entity_id","The Atom of Truth. Triggered by add_transaction (Line 14). This creates the ""paper trail"" for every single penny entering or leaving."
+BalanceAdjusted,"agent_id, adjustment_amount, reason","Triggered if you ever need to manually fix a bugged balance or apply ""God Mode"" edits (Line 24 in add_transaction handles TransactionCategory.ADJUSTMENT)."
+Event Name,Fields,Trigger / Context
+BillGenerated,"bill_id, bill_type (Rent/Labor/Utility), amount, due_week","Triggered in generate_operating_bills (Line 20). If this event is missed, the player technically owes money but the UI won't show it."
+BillPaid,"bill_id, amount_paid, payment_week, was_late",Triggered in pay_bill (Line 67). Critical: This event effectively authorizes the FundsTransferred event mentioned above.
+BillIgnored,"bill_id, week",Implicitly triggered if a bill remains unpaid past its due_week. Used to trigger penalties later.
+Event Name,Fields,Trigger / Context
+TaxAssessed,"quarter, gross_revenue, deductible_expenses, net_profit, tax_amount, credits_applied",Triggered inside generate_tax_bill calling calculate_quarterly_tax (Line 43). Vital: You must capture the credits_applied snapshot here so the player can see why their tax bill was lower/higher.
+TaxFilingStatusChanged,"quarter, status (Filed/Overdue), filing_week",Triggered when generate_tax_bill creates the TaxFilingStatus record (Line 84).
+TaxPenaltyApplied,"bill_id, penalty_amount, reason (Late/Evasion)",Triggered in check_overdue_taxes (Line 118). Increases the amount owed on an existing bill.
+Event Name,Fields,Trigger / Context
+LoanOriginated,"loan_id, principal, interest_rate, term_weeks, weekly_payment",Triggered in create_loan (Line 16). Records the contract details.
+LoanPaymentProcessed,"loan_id, payment_amount, principal_portion, interest_portion, remaining_balance","Triggered in process_payment (Line 60). Math Heavy: Since your code simplifies interest (Line 67), recording the exact split here ensures the history matches the math logic used at that moment."
+LoanDefaulted,"loan_id, week",Triggered if CreditSystem determines too many payments were missed (Logic implied in models.py fields like is_defaulted).
+CreditScoreUpdated,"agent_id, new_score, rating_tier, change_delta","Triggered whenever CreditSystem recalculates the score. Essential for the ""Scoreboard"" view."
+Event Name,Fields,Trigger / Context
+BankInitialized,"agent_id, starting_balance, interest_rates",Triggered in initialize_agent (Line 29). Sets the baseline for the simulation.
+FiscalQuarterEnded,"quarter, week",Implicit event when process_week detects a quarter boundary. Triggers tax calculations.
+Event Name,Fields,Trigger / Context
+RealEstateMarketRefreshed,"week, new_listings: List[Building]",Triggered in generate_listings. You must save the full properties of the generated buildings so they are identical in the replay.
+BuildingPurchased,"agent_id, building_id, price, location_multiplier","Triggered in process_purchase. Moves the building from ""Market"" to ""Agent Portfolio""."
+BuildingSold,"agent_id, building_id, sale_price",(Future Proofing) If a player sells a property back to the market.
+RentPaid,"agent_id, building_id, amount","Note: This might be covered by BillPaid in Finance, but tracking it specifically against a building allows you to calculate ROI per location."
+Event Name,Fields,Trigger / Context
+TrustScoreChanged,"source_agent, target_agent, new_score, delta, reason","Triggered in update_trust. Critical for debugging AI behavior (e.g., ""Why did they reject my deal?"")."
+AllianceProposed,"proposal_id, initiator_id, target_id, type, terms",Triggered in propose_alliance.
+AllianceFormed,"alliance_id, members: List[str], type, start_week, end_week",Triggered when the proposal is accepted.
+AllianceBroken,"alliance_id, breaker_agent_id, reason","If an agent violates the terms (e.g., attacks a partner)."
+AllianceExpired,"alliance_id, week",When duration_weeks runs out.
+Event Name,Fields,Trigger / Context
+MessageSent,"msg_id, sender, recipients, channel, content, intent",The basic fact that communication occurred.
+MessageAnalyzed,"msg_id, sentiment_score, honesty_estimate, manipulation_risk","Critical: Triggered by GameMaster analysis. If you don't record this, replaying the game might yield different sentiment scores if the LLM changes its mind."
+GroupCreated,"group_id, name, owner_id, members",Triggered in create_group.
+GroupMemberAdded,"group_id, agent_id",Triggered in add_to_group.
+Event Name,Fields,Trigger / Context
+SupplyChainDisruptionStarted,"event_id, type (Shortage/Spike), vendor_id, severity, effect_data","Triggered in check_for_major_events. This locks in the random ""Bad Luck"" so it applies consistently to everyone."
+SupplyChainDisruptionEnded,"event_id, week",Triggered in update_events when a disruption expires.
+VendorMarketUpdated,"vendor_id, week, price_multipliers, special_offer","Triggered in Vendor.update_market (from vendor.py). Records the fluctuating prices and random ""Special Offers"" for that week."
+Event Name,Fields,Trigger / Context
+LocationAssigned,"agent_id, zone_id",Triggered in assign_location. Defines where the shop actually is.
+ZoneTrafficShifted,"zone_id, new_traffic_multiplier, reason (e.g., ""Street Festival"")",If the TimeSystem or EventManager changes the base traffic of a zone temporarily.
+MarketingCampaignStarted,"agent_id, campaign_type, cost, boost_amount, duration",Triggered when player spends money on ads.
+MarketingBoostDecayed,"agent_id, decay_amount, remaining_boost",Triggered weekly. Records the fading effect of past marketing spend.
+Event Name,Fields,Trigger / Context
+RegulatoryStatusChanged,"agent_id, new_status (Normal/Monitoring/Warning/Monopoly), market_share, reason","Triggered when _check_market_concentration sees a player cross a threshold (e.g., >25% share). This puts them on a ""Watchlist."""
+InvestigationOpened,"case_id, agent_id, violation_type (Price Fixing/Predatory), evidence_strength","Stage 1: Triggered by a complaint or algorithm. This starts the legal clock. Records the ""Social Score Hit"" (-2) immediately."
+InvestigationStageAdvanced,"case_id, new_stage (Preliminary/Formal/Determination), week","Moves the case from Stage 2 to Stage 3. Triggers legal fees (e.g., $200/week deduction)."
+RegulatoryEvidenceSubmitted,"case_id, agent_id, document_type, compliance_cost",Stage 2: Player pays $100 to submit documents. Records their cooperation level.
+RegulatoryFinding,"case_id, verdict (Cleared/Settlement/Liable), base_penalty, social_impact",Stage 4: The judge's decision. This captures the random chance (30% Cleared / 40% Settlement) so it replays consistently.
+AppealFiled,"case_id, agent_id, legal_cost",Stage 5: Player spends $500 to fight the verdict.
+AppealOutcome,"case_id, success (bool), penalty_reduction",Stage 5 Result: Did the appeal work? Records the final adjusted fine.
+ForcedDivestitureOrdered,"agent_id, deadline_week, target_share","Monopoly Punishment: If status is ""Monopoly"" (51%+), this event starts a countdown timer forcing the player to sell locations."
+"Supply Chain: Disruption (Start/End), Vendor Market Update.",,
+,,
+"Finance: Transfer, Bill (Gen/Pay), Tax (Assess/Penalty), Loan (Originate/Pay/Default).",,
+,,
+"Operations: Machine (Buy/Break/Fix), Staff (Hire/Fire/Train), Ticket (Resolve).",,
+,,
+"Customer: Visit, Bounce, Complaint, Sentiment.",,
+,,
+R&D: Proposal (Submit/Evaluate/Approve).,,
+,,
+"World: Time, Weather, Trend.",,
+,,
+regulatory ,,
