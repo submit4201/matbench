@@ -164,6 +164,13 @@ class LaundromatState(GameModel):
     def revenue_streams(self) -> Dict[str, RevenueStream]:
         return self.primary_location.revenue_streams
 
+    @property
+    def pending_deliveries(self) -> List[Dict[str, Any]]:
+        return self.primary_location.pending_deliveries
+    
+    @pending_deliveries.setter
+    def pending_deliveries(self, value):
+        self.primary_location.pending_deliveries = value
     # --- REMOVED METHODS ---
     # update_reputation, update_social_score, update_inventory_usage, process_week
     # These must be handled by the Engine or Services now.

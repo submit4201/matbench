@@ -253,8 +253,7 @@ class GameEngine:
         daily_supply_cost = 0.0
         # Detergent
         if soap_sold > 0:
-             daily_supply_cost += soap_sold * 0.15 # Unit cost
-             
+            daily_supply_cost += soap_sold * 0.15  # Unit cost
         # Create Event
         revenue_event = DailyRevenueProcessed(
             week=self.time_system.current_week,
