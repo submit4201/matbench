@@ -125,43 +125,29 @@ class GameEngine:
                 self._apply_action(state, action)
             self.pending_actions[agent_id] = []
 
-        # 2. Process Daily Financials for each agent
+        # 2. Process Daily Financials for each agent (single-pass per-agent)
         seasonal_mods = self.time_system.get_seasonal_modifier()
         daily_results = {}
-        daily_events = []
         
         for agent_id, state in self.states.items():
             try:
-                # Get Event instead of mutating state directly
-                rev_event = self._process_daily_financials(state, seasonal_mods)
-                daily_events.append(rev_event)
+                # Compute event
+                event = self._process_daily_financials(state, seasonal_mods)
                 
-                # Reconstruct legacy result for return (Wait to apply event first?)
-                # We need to apply event to get 'new_balance' correct
-            except Exception as e:
-                self.logger.error(f"Failed daily processing for {agent_id}: {e}")
-                daily_results[agent_id] = {"error": str(e)}
-
-        # Save & Apply Events (The "Brain" -> "Repository" -> "Scribe" loop)
-        if daily_events:
-            self.event_repo.save_batch(daily_events)
-            for event in daily_events:
-                # Apply to state
-                StateBuilder.apply_event(self.states[event.agent_id], event)
+                # Persist + apply immediately for this agent
+                self.event_repo.save_batch([event])
+                StateBuilder.apply_event(state, event)
                 
-                # Now populate results with updated state
-                state = self.states[event.agent_id]
-                # We need to re-calculate bill counts or pass them out?
-                # _process_daily_financials handles logic, but extracting the purely readonly data requires access.
-                # For now, simplistic reconstruction:
-                daily_results[event.agent_id] = {
+                # Build response directly from event payload + updated state
+                daily_results[agent_id] = {
                     "customers": event.customer_count,
                     "revenue": round(event.revenue_wash + event.revenue_dry + event.revenue_vending, 2),
                     "day": self.time_system.current_day.value,
                     "new_balance": round(state.balance, 2),
-                    "overdue_bills": 0, # TODO: Refactor bill notification loop to return this metric if needed
-                    "bills_due_soon": 0 
                 }
+            except Exception as e:
+                self.logger.error(f"Failed daily processing for {agent_id}: {e}")
+                daily_results[agent_id] = {"error": str(e)}
 
         # 3. Advance Time (Day)
         week_advanced = self.time_system.advance_day()
@@ -520,21 +506,51 @@ class GameEngine:
                     )
                     weekly_events.append(scandal_event)
 
-                # --- Financial Report Generation (Safe Read) ---
-                # NOTE: _process_financials still mutates 'parts' inventory. 
-                # Ideally this should be an event "MaintenanceInventoryUsed". Keeping as legacy for now to satisfy report generation.
-                # Use current customer count from state (updated daily)
-                customer_count_est = state.active_customers * 7 # Rough est
+                # --- Financial Report Generation ---
+                customer_count_est = state.active_customers * 7  # Rough weekly estimate
                 
-                # Generate financial report as event
-                report_event = self._process_financials(state, seasonal_mods, customer_count_est)
-                weekly_events.append(report_event)
+                # Compute FinancialReport (single source of truth)
+                financial_report = self._process_financials(state, seasonal_mods, customer_count_est)
                 
                 # Financial System Orchestration (uses data from event)
                 # Note: We need to reconstruct FinancialReport for FinancialSystem here
                 # until FinancialSystem is also refactored to use events
                 financial_report = self._financial_report_from_event(report_event)
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
+                
+                # Create event from report (single mapping)
+                report_event = WeeklyReportGenerated(
+                    week=self.time_system.current_week,
+                    agent_id=state.id,
+                    revenue_wash=financial_report.revenue_wash,
+                    revenue_dry=financial_report.revenue_dry,
+                    revenue_vending=financial_report.revenue_vending,
+                    revenue_premium=financial_report.revenue_premium,
+                    revenue_membership=financial_report.revenue_membership,
+                    revenue_other=financial_report.revenue_other,
+                    total_revenue=financial_report.total_revenue,
+                    cogs_supplies=financial_report.cogs_supplies,
+                    cogs_vending=financial_report.cogs_vending,
+                    total_cogs=financial_report.total_cogs,
+                    gross_profit=financial_report.gross_profit,
+                    expense_rent=financial_report.expense_rent,
+                    expense_utilities=financial_report.expense_utilities,
+                    expense_labor=financial_report.expense_labor,
+                    expense_maintenance=financial_report.expense_maintenance,
+                    expense_insurance=financial_report.expense_insurance,
+                    expense_other=financial_report.expense_other,
+                    total_operating_expenses=financial_report.total_operating_expenses,
+                    operating_income=financial_report.operating_income,
+                    expense_interest=financial_report.expense_interest,
+                    net_income_before_tax=financial_report.net_income_before_tax,
+                    tax_provision=financial_report.tax_provision,
+                    net_income=financial_report.net_income,
+                    cash_beginning=financial_report.cash_beginning,
+                    cash_ending=financial_report.cash_ending,
+                    active_customers=financial_report.active_customers,
+                    parts_used=financial_report.parts_used
+                )
+                weekly_events.append(report_event)
                 
                 results[agent_id] = {
                     "revenue": round(financial_report.total_revenue, 2),
@@ -618,49 +634,51 @@ class GameEngine:
         self.logger.warning(f"Legacy action '{action.get('type')}' received but not handled by Registry. Ignoring.")
         return False
 
-    def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> 'WeeklyReportGenerated':
+    def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> FinancialReport:
         """
-        Generates weekly financial report as an event.
-        All state mutations are now handled by the event handler.
-        Returns: WeeklyReportGenerated event (state mutations deferred to handler)
+        Generates weekly financial report as a domain object (read-only, no state mutation).
+        Returns: FinancialReport (single source of truth for financial calculations)
         """
-        # 1. Use accumulated daily revenue from revenue streams (READ ONLY)
+        report = FinancialReport(week=self.time_system.current_week)
+        
+        # 1. Revenue from accumulated daily streams (READ ONLY)
         wash_stream = state.revenue_streams.get("Standard Wash")
         dry_stream = state.revenue_streams.get("Standard Dry")
         
-        revenue_wash = wash_stream.weekly_revenue if wash_stream else 0.0
-        revenue_dry = dry_stream.weekly_revenue if dry_stream else 0.0
+        report.revenue_wash = wash_stream.weekly_revenue if wash_stream else 0.0
+        report.revenue_dry = dry_stream.weekly_revenue if dry_stream else 0.0
         
-        # Get vending revenue from accumulated streams
+        # Vending revenue from accumulated streams
         detergent_stream = state.revenue_streams.get("Detergent Sale")
         softener_stream = state.revenue_streams.get("Softener Sale")
         dryer_sheets_stream = state.revenue_streams.get("Dryer Sheets")
         
-        revenue_vending = 0.0
+        report.revenue_vending = 0.0
         if detergent_stream:
-            revenue_vending += detergent_stream.weekly_revenue or 0.0
+            report.revenue_vending += detergent_stream.weekly_revenue or 0.0
         if softener_stream:
-            revenue_vending += softener_stream.weekly_revenue or 0.0
+            report.revenue_vending += softener_stream.weekly_revenue or 0.0
         if dryer_sheets_stream:
-            revenue_vending += dryer_sheets_stream.weekly_revenue or 0.0
+            report.revenue_vending += dryer_sheets_stream.weekly_revenue or 0.0
 
-        # Other vending streams
-        revenue_premium = 0.0
-        revenue_membership = 0.0
-        revenue_other = 0.0
+        # Other revenue streams
+        report.revenue_premium = 0.0
+        report.revenue_membership = 0.0
+        report.revenue_other = 0.0
         for name, stream in state.revenue_streams.items():
-            if not stream.unlocked: continue
+            if not stream.unlocked:
+                continue
             if stream.category == "vending" and name not in ["Detergent Sale", "Softener Sale", "Dryer Sheets"]:
-                revenue_vending += stream.weekly_revenue or 0.0
+                report.revenue_vending += stream.weekly_revenue or 0.0
             elif stream.category == "premium":
-                revenue_premium += stream.weekly_revenue or 0.0
+                report.revenue_premium += stream.weekly_revenue or 0.0
             elif stream.category == "membership":
-                revenue_membership += stream.weekly_revenue or 0.0
+                report.revenue_membership += stream.weekly_revenue or 0.0
             elif stream.category == "other":
-                revenue_other += stream.weekly_revenue or 0.0
+                report.revenue_other += stream.weekly_revenue or 0.0
         
-        total_revenue = (revenue_wash + revenue_dry + revenue_vending + 
-                        revenue_premium + revenue_membership + revenue_other)
+        report.total_revenue = (report.revenue_wash + report.revenue_dry + report.revenue_vending + 
+                               report.revenue_premium + report.revenue_membership + report.revenue_other)
         
         # 2. COGS (Supplies) - estimated based on customer count
         detergent_cost_unit = 0.15 
@@ -669,138 +687,73 @@ class GameEngine:
         estimated_soap_used = customer_count * 0.5
         estimated_softener_used = customer_count * 0.3
         
-        cogs_supplies = (estimated_soap_used * detergent_cost_unit) + (estimated_softener_used * softener_cost_unit)
+        report.cogs_supplies = (estimated_soap_used * detergent_cost_unit) + (estimated_softener_used * softener_cost_unit)
         
-        cogs_vending = 0.0
+        report.cogs_vending = 0.0
         for stream in state.revenue_streams.values():
             if stream.category == "vending" and stream.cost_per_unit > 0:
                 estimated_sales = customer_count * 0.2
-                cogs_vending += estimated_sales * stream.cost_per_unit
+                report.cogs_vending += estimated_sales * stream.cost_per_unit
         
-        total_cogs = cogs_supplies + cogs_vending
-        gross_profit = total_revenue - total_cogs
+        report.total_cogs = report.cogs_supplies + report.cogs_vending
+        report.gross_profit = report.total_revenue - report.total_cogs
         
-        # 3. Operating Expenses (Fixed)
-        expense_rent = 250.0
+        # 3. Operating Expenses
+        report.expense_rent = 250.0
         
         # Utilities
         water_cost = customer_count * 0.15
         elec_cost = customer_count * (0.20 + 0.25)
         gas_cost = customer_count * 0.10
-        expense_utilities = (water_cost + elec_cost + gas_cost) * seasonal_mods.get("heating_cost", 1.0)
+        report.expense_utilities = (water_cost + elec_cost + gas_cost) * seasonal_mods.get("heating_cost", 1.0)
         
         # Labor
-        expense_labor = sum(staff.wage * 20 for staff in state.staff)
+        report.expense_labor = sum(staff.wage * 20 for staff in state.staff)
         
         # Maintenance - calculate parts to use (NO MUTATION HERE)
         parts_needed = max(1, int(len(state.machines) / 10))
         parts_available = state.inventory.get("parts", 0)
-        parts_used = min(parts_needed, parts_available)
+        report.parts_used = min(parts_needed, parts_available)
         
         base_maintenance_cost = 20.0 * len(state.machines)
-        if parts_used < parts_needed:
+        if report.parts_used < parts_needed:
             base_maintenance_cost *= 1.5
             self.logger.info(f"Agent {state.id} missing parts for maintenance! Cost penalty applied.")
             
-        expense_maintenance = base_maintenance_cost
-        expense_insurance = 37.5
-        expense_other = 25.0
+        report.expense_maintenance = base_maintenance_cost
+        report.expense_insurance = 37.5
+        report.expense_other = 25.0
         
         # Note: No state mutation occurs here. This function returns an event describing the financials;
         # the actual ledger update happens in the event handler, not in this processing function.
         total_operating_expenses = (expense_rent + expense_utilities + expense_labor + 
                                    expense_maintenance + expense_insurance + expense_other)
         
-        operating_income = gross_profit - total_operating_expenses
+        report.operating_income = report.gross_profit - report.total_operating_expenses
         
         # 4. Loans & Interest (READ ONLY)
-        expense_interest = 0.0
+        report.expense_interest = 0.0
         for loan in state.loans:
-             if loan.balance > 0:
+            if loan.balance > 0:
                 interest = loan.balance * (loan.interest_rate_monthly / 4.0)
-                expense_interest += interest
+                report.expense_interest += interest
         
-        net_income_before_tax = operating_income - expense_interest
+        report.net_income_before_tax = report.operating_income - report.expense_interest
         
         # 5. Taxes
-        tax_provision = self.economy_system.calculate_taxes(total_revenue, 
-                                                           total_operating_expenses + total_cogs + expense_interest, 
-                                                           0)
+        report.tax_provision = self.economy_system.calculate_taxes(
+            report.total_revenue, 
+            report.total_operating_expenses + report.total_cogs + report.expense_interest, 
+            0
+        )
         
-        net_income = net_income_before_tax - tax_provision
+        report.net_income = report.net_income_before_tax - report.tax_provision
         
         # Cash (READ ONLY)
-        cash_beginning = state.balance
-        cash_ending = state.balance  # No changes until events apply
+        report.cash_beginning = state.balance
+        report.cash_ending = state.balance  # No changes until events apply
         
-        # Create and return event (NO STATE MUTATIONS)
-        return WeeklyReportGenerated(
-            week=self.time_system.current_week,
-            agent_id=state.id,
-            revenue_wash=revenue_wash,
-            revenue_dry=revenue_dry,
-            revenue_vending=revenue_vending,
-            revenue_premium=revenue_premium,
-            revenue_membership=revenue_membership,
-            revenue_other=revenue_other,
-            total_revenue=total_revenue,
-            cogs_supplies=cogs_supplies,
-            cogs_vending=cogs_vending,
-            total_cogs=total_cogs,
-            gross_profit=gross_profit,
-            expense_rent=expense_rent,
-            expense_utilities=expense_utilities,
-            expense_labor=expense_labor,
-            expense_maintenance=expense_maintenance,
-            expense_insurance=expense_insurance,
-            expense_other=expense_other,
-            total_operating_expenses=total_operating_expenses,
-            operating_income=operating_income,
-            expense_interest=expense_interest,
-            net_income_before_tax=net_income_before_tax,
-            tax_provision=tax_provision,
-            net_income=net_income,
-            cash_beginning=cash_beginning,
-            cash_ending=cash_ending,
-            active_customers=int(customer_count),
-            parts_used=parts_used
-        )
-    
-    def _financial_report_from_event(self, event: WeeklyReportGenerated) -> FinancialReport:
-        """
-        Helper method to convert WeeklyReportGenerated event to FinancialReport.
-        This reduces code duplication and error potential during the transition
-        until FinancialSystem is refactored to use events.
-        """
-        report = FinancialReport(week=self.time_system.current_week)
-        report.total_revenue = event.total_revenue
-        report.revenue_wash = event.revenue_wash
-        report.revenue_dry = event.revenue_dry
-        report.revenue_vending = event.revenue_vending
-        report.revenue_premium = event.revenue_premium
-        report.revenue_membership = event.revenue_membership
-        report.revenue_other = event.revenue_other
-        report.cogs_supplies = event.cogs_supplies
-        report.cogs_vending = event.cogs_vending
-        report.total_cogs = event.total_cogs
-        report.gross_profit = event.gross_profit
-        report.expense_rent = event.expense_rent
-        report.expense_utilities = event.expense_utilities
-        report.expense_labor = event.expense_labor
-        report.expense_maintenance = event.expense_maintenance
-        report.expense_insurance = event.expense_insurance
-        report.expense_other = event.expense_other
-        report.total_operating_expenses = event.total_operating_expenses
-        report.operating_income = event.operating_income
-        report.expense_interest = event.expense_interest
-        report.net_income_before_tax = event.net_income_before_tax
-        report.tax_provision = event.tax_provision
-        report.net_income = event.net_income
-        report.cash_beginning = event.cash_beginning
-        report.cash_ending = event.cash_ending
-        # The following fields are not present in WeeklyReportGenerated and will default to 0.0:
-        #   - expense_marketing
-        #   - income_interest
-        #   - fines
-        # If these fields become relevant, update WeeklyReportGenerated and this method accordingly.
+        # Customer count for handler
+        report.active_customers = int(customer_count)
+        
         return report
