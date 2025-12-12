@@ -19,11 +19,19 @@ from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
 from src.models.events.finance import DailyRevenueProcessed, BillGenerated, WeeklySpendingReset, WeeklyReportGenerated
 from src.models.events.operations import MachineWearUpdated, MarketingBoostDecayed, CleanlinessUpdated
-from src.models.events.social import ReputationChanged, ScandalStarted
+from src.models.events.social import ReputationChanged
 from src.models.events.commerce import ShipmentReceived
 import copy
 # Load handlers modules to register them
 import src.engine.actions.handlers 
+
+# Utility cost constants per load
+STANDARD_WATER_COST_PER_LOAD = 0.15
+STANDARD_ELECTRICITY_COST_PER_LOAD = 0.20
+ECO_WATER_COST_PER_LOAD = 0.08
+ECO_ELECTRICITY_COST_PER_LOAD = 0.12
+DRYER_GAS_COST_PER_LOAD = 0.10
+DRYER_ELECTRICITY_COST_PER_LOAD = 0.25
 
 class GameEngine:
     """
@@ -95,7 +103,7 @@ class GameEngine:
         Actions are validated and stored until the turn is processed.
         """
         if agent_id not in self.agent_ids:
-            logger.error(f"Unknown agent {agent_id} tried to submit action.")
+            self.logger.error(f"Unknown agent {agent_id} tried to submit action.")
             return False
             
         # Basic validation could happen here
@@ -147,11 +155,11 @@ class GameEngine:
         # 4. Weekly Processing (if Sunday ended) - bills, taxes, events, etc.
         results = {}
         if week_advanced:
-            logger.info(f"Week advanced to {self.time_system.current_week}. Running Weekly Processes.")
+            self.logger.info(f"Week advanced to {self.time_system.current_week}. Running Weekly Processes.")
             results = self.process_week()
             results["daily"] = daily_results
         else:
-            logger.info(f"Advanced to {self.time_system.current_day.value}")
+            self.logger.info(f"Advanced to {self.time_system.current_day.value}")
             results = {
                 "status": "day_advanced", 
                 "current_day": self.time_system.current_day.value,
@@ -201,6 +209,7 @@ class GameEngine:
         daily_vending = 0.0
         daily_soap_rev = 0.0
         daily_sheets_rev = 0.0
+        soap_sold = 0  # Ensure soap_sold is always defined
         
         customers_needing_soap = int(customer_count * 0.5)
         
@@ -227,11 +236,6 @@ class GameEngine:
         # Loads fill machines.
         loads_to_process = customer_count
         
-        # Machine Configs (Constants for now, could be on Machine model)
-        # Standard: Water 0.15, Elec 0.20
-        # Eco: Water 0.08, Elec 0.12
-        # Industrial: Water 0.25, Elec 0.40
-        
         for machine in state.machines:
             if loads_to_process <= 0:
                 break
@@ -244,18 +248,18 @@ class GameEngine:
             loads_to_process -= loads
             
             # Rate Calculation
-            w_cost = 0.15
-            e_cost = 0.20
+            water_cost_per_load = STANDARD_WATER_COST_PER_LOAD
+            electricity_cost_per_load = STANDARD_ELECTRICITY_COST_PER_LOAD
             if "eco" in machine.type:
-                 w_cost = 0.08
-                 e_cost = 0.12
+                water_cost_per_load = ECO_WATER_COST_PER_LOAD
+                electricity_cost_per_load = ECO_ELECTRICITY_COST_PER_LOAD
             
-            daily_utility_cost += loads * (w_cost + e_cost)
+            daily_utility_cost += loads * (water_cost_per_load + electricity_cost_per_load)
             
         # Dryer Utility (Gas/Elec) - Link to wash loads?
         # Assume 1 dryer load per wash load roughly
         dryer_loads = customer_count 
-        daily_utility_cost += dryer_loads * (0.10 + 0.25) # Gas + Elec
+        daily_utility_cost += dryer_loads * (DRYER_GAS_COST_PER_LOAD + DRYER_ELECTRICITY_COST_PER_LOAD)
         
         # Supply Cost Calculation (COGS)
         daily_supply_cost = 0.0
@@ -344,7 +348,7 @@ class GameEngine:
         self.economy_system.update_trends(self.time_system.current_week)
         trend = self.economy_system.active_trend
         if trend and trend.week == self.time_system.current_week:
-            logger.info(f"Market Trend: {trend.news_headline}")
+            self.logger.info(f"Market Trend: {trend.news_headline}")
             # Broadcast news
             for agent_id in self.agent_ids:
                 self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.ANNOUNCEMENT)
@@ -508,7 +512,10 @@ class GameEngine:
                 # Compute FinancialReport (single source of truth)
                 financial_report = self._process_financials(state, seasonal_mods, customer_count_est)
                 
-                # Use domain object directly for financial system
+                # Financial System Orchestration (uses data from event)
+                # Note: We need to reconstruct FinancialReport for FinancialSystem here
+                # until FinancialSystem is also refactored to use events
+                financial_report = self._financial_report_from_event(report_event)
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
                 
                 # Create event from report (single mapping)
@@ -553,7 +560,7 @@ class GameEngine:
                     "new_balance": round(state.balance, 2)
                 }
             except Exception as e:
-                logger.error(f"Failed to process turn for agent {agent_id}: {e}", exc_info=True)
+                self.logger.error(f"Failed to process turn for agent {agent_id}: {e}", exc_info=True)
                 results[agent_id] = {"error": str(e), "customers": 0, "revenue": 0}
         
         # 3. Save & Apply Weekly Events
@@ -565,7 +572,7 @@ class GameEngine:
         # 5.5 Record Metrics (Audit)
         self.metrics_auditor.record_weekly_state(self.time_system.current_week, self.states)
 
-        logger.info(f"Processed logic for Week {self.time_system.current_week}")
+        self.logger.info(f"Processed logic for Week {self.time_system.current_week}")
         
         return results
 
@@ -717,8 +724,10 @@ class GameEngine:
         report.expense_insurance = 37.5
         report.expense_other = 25.0
         
-        report.total_operating_expenses = (report.expense_rent + report.expense_utilities + report.expense_labor + 
-                                           report.expense_maintenance + report.expense_insurance + report.expense_other)
+        # Note: No state mutation occurs here. This function returns an event describing the financials;
+        # the actual ledger update happens in the event handler, not in this processing function.
+        total_operating_expenses = (expense_rent + expense_utilities + expense_labor + 
+                                   expense_maintenance + expense_insurance + expense_other)
         
         report.operating_income = report.gross_profit - report.total_operating_expenses
         
