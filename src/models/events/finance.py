@@ -8,6 +8,16 @@ from .core import GameEvent
 
 # --- Transaction Events ---
 
+class DailyRevenueProcessed(GameEvent):
+    """Daily revenue processing event."""
+    type: str = "DAILY_REVENUE_PROCESSED"
+    revenue_wash: float = Field(ge=0)
+    revenue_dry: float = Field(ge=0)
+    revenue_vending: float = Field(ge=0) # Total vending (kept for total calc)
+    revenue_soap: float = Field(default=0.0, ge=0)
+    revenue_sheets: float = Field(default=0.0, ge=0)
+    customer_count: int = Field(ge=0)
+
 class FundsTransferred(GameEvent):
     """The atom of the financial system."""
     type: str = "FUNDS_TRANSFERRED"

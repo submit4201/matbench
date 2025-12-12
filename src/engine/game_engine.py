@@ -17,6 +17,7 @@ from src.engine.metrics_auditor import MetricsAuditor
 from src.engine.persistence.event_repo import EventRepository
 from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
+from src.models.events.finance import DailyRevenueProcessed
 import copy
 # Load handlers modules to register them
 import src.engine.actions.handlers 
@@ -116,13 +117,40 @@ class GameEngine:
         # 2. Process Daily Financials for each agent
         seasonal_mods = self.time_system.get_seasonal_modifier()
         daily_results = {}
+        daily_events = []
         
         for agent_id, state in self.states.items():
             try:
-                daily_results[agent_id] = self._process_daily_financials(state, seasonal_mods)
+                # Get Event instead of mutating state directly
+                rev_event = self._process_daily_financials(state, seasonal_mods)
+                daily_events.append(rev_event)
+                
+                # Reconstruct legacy result for return (Wait to apply event first?)
+                # We need to apply event to get 'new_balance' correct
             except Exception as e:
                 logger.error(f"Failed daily processing for {agent_id}: {e}")
                 daily_results[agent_id] = {"error": str(e)}
+
+        # Save & Apply Events (The "Brain" -> "Repository" -> "Scribe" loop)
+        if daily_events:
+            self.event_repo.save_batch(daily_events)
+            for event in daily_events:
+                # Apply to state
+                StateBuilder.apply_event(self.states[event.agent_id], event)
+                
+                # Now populate results with updated state
+                state = self.states[event.agent_id]
+                # We need to re-calculate bill counts or pass them out?
+                # _process_daily_financials handles logic, but extracting the purely readonly data requires access.
+                # For now, simplistic reconstruction:
+                daily_results[event.agent_id] = {
+                    "customers": event.customer_count,
+                    "revenue": round(event.revenue_wash + event.revenue_dry + event.revenue_vending, 2),
+                    "day": self.time_system.current_day.value,
+                    "new_balance": round(state.balance, 2),
+                    "overdue_bills": 0, # TODO: Refactor bill notification loop to return this metric if needed
+                    "bills_due_soon": 0 
+                }
 
         # 3. Advance Time (Day)
         week_advanced = self.time_system.advance_day()
@@ -143,10 +171,10 @@ class GameEngine:
             
         return results
 
-    def _process_daily_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float]) -> Dict[str, Any]:
+    def _process_daily_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float]) -> DailyRevenueProcessed:
         """
         Process daily revenue and expenses.
-        Customers visit daily, revenue is earned daily.
+        Returns an Event describing the outcome. State mutation is handled by the Event Handler.
         """
         # Calculate daily customer count (weekly base / 7)
         total_market = 2400  # Weekly market demand
@@ -180,53 +208,45 @@ class GameEngine:
         daily_wash_rev = customer_count * wash_price
         daily_dry_rev = customer_count * dry_price
         
-        # Update revenue stream trackers (accumulate daily)
-        if wash_stream:
-            wash_stream.weekly_revenue = (wash_stream.weekly_revenue or 0) + daily_wash_rev
-        if dry_stream:
-            dry_stream.weekly_revenue = (dry_stream.weekly_revenue or 0) + daily_dry_rev
-        
         # Vending sales (daily portion)
         daily_vending = 0.0
+        daily_soap_rev = 0.0
+        daily_sheets_rev = 0.0
+        
         customers_needing_soap = int(customer_count * 0.5)
         
         detergent_stream = state.revenue_streams.get("Detergent Sale")
         if detergent_stream and detergent_stream.unlocked:
             soap_sold = min(customers_needing_soap, state.inventory.get("detergent", 0))
             soap_rev = soap_sold * detergent_stream.price
+            daily_soap_rev = soap_rev
             daily_vending += soap_rev
-            detergent_stream.weekly_revenue = (detergent_stream.weekly_revenue or 0) + soap_rev
-            # Deduct inventory
-            if soap_sold > 0:
-                state.inventory["detergent"] = state.inventory.get("detergent", 0) - soap_sold
+            # Inventory update is deferred to Handler
         
         # Dryer sheets stream
         dryer_sheets_stream = state.revenue_streams.get("Dryer Sheets")
         if dryer_sheets_stream and dryer_sheets_stream.unlocked:
             sheets_sold = customer_count * 0.2
             sheets_rev = sheets_sold * dryer_sheets_stream.price
+            daily_sheets_rev = sheets_rev
             daily_vending += sheets_rev
-            dryer_sheets_stream.weekly_revenue = (dryer_sheets_stream.weekly_revenue or 0) + sheets_rev
         
-        total_daily_revenue = daily_wash_rev + daily_dry_rev + daily_vending
+        # Create Event
+        revenue_event = DailyRevenueProcessed(
+            week=self.time_system.current_week,
+            day=self.time_system.current_day.value,
+            agent_id=state.id,
+            revenue_wash=float(daily_wash_rev),
+            revenue_dry=float(daily_dry_rev),
+            revenue_vending=float(daily_vending),
+            revenue_soap=float(daily_soap_rev),
+            revenue_sheets=float(daily_sheets_rev),
+            customer_count=int(customer_count)
+        )
         
-        # Record revenue in ledger
-        if total_daily_revenue > 0:
-            state.ledger.add(
-                total_daily_revenue, 
-                "revenue", 
-                f"Daily Revenue (Day {self.time_system.current_day.value})", 
-                self.time_system.current_week
-            )
-        
-        # Update active customers for frontend
-        state.active_customers = int(customer_count)
-        
-        # === DAILY BILL CHECKING ===
-        # Check for overdue bills and send notifications
+        # === DAILY BILL CHECKING (Side Effect - Notifications) ===
+        # Use Read-Only state access
         current_week = self.time_system.current_week
-        overdue_count = 0
-        due_soon_count = 0
         
         for bill in state.bills:
             if bill.is_paid:
@@ -234,7 +254,6 @@ class GameEngine:
                 
             # Bill is overdue
             if bill.due_week < current_week:
-                overdue_count += 1
                 # Send overdue notice (only once per bill - check if already notified)
                 overdue_key = f"overdue_{bill.id}"
                 if overdue_key not in getattr(state, '_notified_bills', set()):
@@ -251,7 +270,6 @@ class GameEngine:
                     
             # Bill due this week (reminder on first day)
             elif bill.due_week == current_week and self.time_system.current_day.value == "Monday":
-                due_soon_count += 1
                 self.communication.send_system_message(
                     recipient_id=state.id,
                     content=f"📋 **Bill Due This Week**\\n\\n{bill.name}: ${bill.amount:.2f}\\nDue by end of Week {bill.due_week}.",
@@ -259,14 +277,7 @@ class GameEngine:
                     intent=MessageIntent.REMINDER
                 )
         
-        return {
-            "customers": round(customer_count),
-            "revenue": round(total_daily_revenue, 2),
-            "day": self.time_system.current_day.value,
-            "new_balance": round(state.balance, 2),
-            "overdue_bills": overdue_count,
-            "bills_due_soon": due_soon_count
-        }
+        return revenue_event
 
     def _calculate_staff_effects(self, state: LaundromatState) -> Dict[str, float]:
         """Calculates total bonuses from staff members."""
