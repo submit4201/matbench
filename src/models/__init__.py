@@ -3,25 +3,14 @@ Pydantic models for Laundromat Tycoon.
 
 All game data models are defined here for consistent type safety,
 validation, and TypeScript generation.
-"""
 
+Note: Uses lazy loading for some modules to avoid circular imports.
+"""
+from typing import TYPE_CHECKING
+
+# Safe imports (no circular dependencies)
 from .base import GameModel
 from .agent import Action, Message, Observation
-from .financial import (
-    Transaction,
-    TransactionCategory, 
-    FinancialLedger,
-    Bill,
-    RevenueStream,
-    Loan,
-    FinancialReport
-)
-from .world import (
-    Machine,
-    StaffMember,
-    Building,
-    LaundromatState
-)
 from .social import (
     SocialScore,
     SocialTier,
@@ -30,15 +19,6 @@ from .social import (
     TicketStatus,
     SOCIAL_SCORE_WEIGHTS,
     TIER_INFO_CONFIG
-)
-from .commerce import (
-    VendorProfile,
-    VendorTier,
-    SupplyOffer,
-    SupplyChainEvent,
-    SupplyChainEventType,
-    Proposal,
-    ProposalStatus
 )
 from .population import (
     CustomerMemory,
@@ -53,6 +33,40 @@ from .communication import (
     ChannelType,
     MessageIntent
 )
+
+# Lazy-loaded imports to avoid circular dependencies
+# These modules import from src.engine which may import back to src.models
+_lazy_imports = {
+    # Financial
+    'Transaction': '.financial',
+    'TransactionCategory': '.financial',
+    'FinancialLedger': '.financial',
+    'Bill': '.financial',
+    'RevenueStream': '.financial',
+    'Loan': '.financial',
+    'FinancialReport': '.financial',
+    # World
+    'Machine': '.world',
+    'StaffMember': '.world',
+    'Building': '.world',
+    'LaundromatState': '.world',
+    # Commerce
+    'VendorProfile': '.commerce',
+    'VendorTier': '.commerce',
+    'SupplyOffer': '.commerce',
+    'SupplyChainEvent': '.commerce',
+    'SupplyChainEventType': '.commerce',
+    'Proposal': '.commerce',
+    'ProposalStatus': '.commerce',
+}
+
+def __getattr__(name: str):
+    if name in _lazy_imports:
+        module_name = _lazy_imports[name]
+        import importlib
+        module = importlib.import_module(module_name, __package__)
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     # Base

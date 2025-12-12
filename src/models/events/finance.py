@@ -63,6 +63,47 @@ class BillIgnored(GameEvent):
     ignored_week: int
 
 
+class WeeklySpendingReset(GameEvent):
+    """Event for resetting weekly spending accumulators after bills generated."""
+    type: str = "WEEKLY_SPENDING_RESET"
+    utility_total: float = Field(default=0.0, ge=0)
+    supply_total: float = Field(default=0.0, ge=0)
+
+
+class WeeklyReportGenerated(GameEvent):
+    """Event for weekly financial report generation with all associated state updates."""
+    type: str = "WEEKLY_REPORT_GENERATED"
+    # Report data (serialized)
+    revenue_wash: float = 0.0
+    revenue_dry: float = 0.0
+    revenue_vending: float = 0.0
+    revenue_premium: float = 0.0
+    revenue_membership: float = 0.0
+    revenue_other: float = 0.0
+    total_revenue: float = 0.0
+    cogs_supplies: float = 0.0
+    cogs_vending: float = 0.0
+    total_cogs: float = 0.0
+    gross_profit: float = 0.0
+    expense_rent: float = 0.0
+    expense_utilities: float = 0.0
+    expense_labor: float = 0.0
+    expense_maintenance: float = 0.0
+    expense_insurance: float = 0.0
+    expense_other: float = 0.0
+    total_operating_expenses: float = 0.0
+    operating_income: float = 0.0
+    expense_interest: float = 0.0
+    net_income_before_tax: float = 0.0
+    tax_provision: float = 0.0
+    net_income: float = 0.0
+    cash_beginning: float = 0.0
+    cash_ending: float = 0.0
+    # State updates that handler will apply
+    active_customers: int = 0
+    parts_used: int = 0
+
+
 # --- Tax Events ---
 
 class TaxAssessed(GameEvent):

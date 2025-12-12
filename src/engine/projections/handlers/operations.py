@@ -1,7 +1,11 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from src.engine.projections.registry import EventRegistry
-from src.models.world import LaundromatState
 from src.models.hierarchy import Machine, StaffMember, Building
-from src.models.events.core import GameEvent
+
+if TYPE_CHECKING:
+    from src.models.world import LaundromatState
+    from src.models.events.core import GameEvent
 
 @EventRegistry.register("STAFF_HIRED")
 def apply_staff_hired(state: LaundromatState, event: GameEvent):
@@ -18,6 +22,15 @@ def apply_staff_hired(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("STAFF_FIRED")
 def apply_staff_fired(state: LaundromatState, event: GameEvent):
     payload = event.payload
+    staff_id = getattr(event, "staff_id", payload.get("staff_id"))
+    state.primary_location.staff = [
+        s for s in state.primary_location.staff if s.id != staff_id
+    ]
+
+@EventRegistry.register("STAFF_QUITS")
+def apply_staff_quits(state: LaundromatState, event: GameEvent):
+    """Remove staff member who quit."""
+    payload = event.payload if hasattr(event, "payload") else {}
     staff_id = getattr(event, "staff_id", payload.get("staff_id"))
     state.primary_location.staff = [
         s for s in state.primary_location.staff if s.id != staff_id
@@ -103,4 +116,143 @@ def apply_maintenance(state: LaundromatState, event: GameEvent):
                 # Assuming yes.
                 if hasattr(m, 'is_broken'):
                      m.is_broken = False
+
+
+@EventRegistry.register("MACHINE_WEAR_UPDATED")
+def apply_machine_wear_updated(state: LaundromatState, event: GameEvent):
+    """Apply machine wear degradation from weekly physics calculation."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    machine_id = getattr(event, "machine_id", payload.get("machine_id"))
+    new_condition = getattr(event, "current_condition", payload.get("current_condition"))
+    
+    for m in state.primary_location.machines:
+        if m.id == machine_id:
+            m.condition = new_condition
+            # If condition drops below breakdown threshold, mark as broken
+            if new_condition <= 0.2:
+                if hasattr(m, 'is_broken'):
+                    m.is_broken = True
+            break
+
+
+@EventRegistry.register("MARKETING_BOOST_DECAYED")
+def apply_marketing_boost_decayed(state: LaundromatState, event: GameEvent):
+    """Apply marketing boost decay from weekly calculation."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    remaining = getattr(event, "remaining_boost", payload.get("remaining_boost", 0.0))
+    state.primary_location.marketing_boost = remaining
+
+
+# --- Orphan Event Handlers (Future Feature Support) ---
+
+@EventRegistry.register("MACHINE_STATE_CHANGED")
+def apply_machine_state_changed(state: LaundromatState, event: GameEvent):
+    """Update machine operational state."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    machine_id = getattr(event, "machine_id", payload.get("machine_id"))
+    new_state = getattr(event, "new_state", payload.get("new_state"))
+    condition = getattr(event, "condition", payload.get("condition"))
+    
+    for m in state.primary_location.machines:
+        if m.id == machine_id:
+            if hasattr(m, "state"):
+                m.state = new_state
+            if condition is not None:
+                m.condition = condition
+            if new_state == "broken":
+                m.is_broken = True
+            break
+
+
+@EventRegistry.register("CUSTOMER_VISIT_STARTED")
+def apply_customer_visit_started(state: LaundromatState, event: GameEvent):
+    """Stub for customer visit tracking."""
+    pass
+
+
+@EventRegistry.register("CUSTOMER_VISIT_BOUNCED")
+def apply_customer_visit_bounced(state: LaundromatState, event: GameEvent):
+    """Stub for bounce tracking."""
+    pass
+
+
+@EventRegistry.register("CUSTOMER_COMPLAINT_FILED")
+def apply_customer_complaint_filed(state: LaundromatState, event: GameEvent):
+    """Add ticket for customer complaint."""
+    from src.models.social import Ticket, TicketType, TicketStatus
+    
+    payload = event.payload if hasattr(event, "payload") else {}
+    ticket = Ticket(
+        id=getattr(event, "ticket_id", payload.get("ticket_id", "")),
+        type=TicketType.COMPLAINT,
+        description=getattr(event, "description", payload.get("description", "")),
+        status=TicketStatus.OPEN,
+        created_week=event.week
+    )
+    state.tickets.append(ticket)
+
+
+@EventRegistry.register("CUSTOMER_SERVICE_COMPLETED")
+def apply_customer_service_completed(state: LaundromatState, event: GameEvent):
+    """Stub for service completion tracking."""
+    pass
+
+
+@EventRegistry.register("CUSTOMER_SENTIMENT_RECORDED")
+def apply_customer_sentiment_recorded(state: LaundromatState, event: GameEvent):
+    """Stub for sentiment tracking."""
+    pass
+
+
+@EventRegistry.register("TICKET_IGNORED")
+def apply_ticket_ignored(state: LaundromatState, event: GameEvent):
+    """Mark ticket as ignored."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    ticket_id = getattr(event, "ticket_id", payload.get("ticket_id"))
+    
+    for ticket in state.tickets:
+        if ticket.id == ticket_id:
+            ticket.status = "ignored"
+            break
+
+
+@EventRegistry.register("PROPOSAL_SUBMITTED")
+def apply_proposal_submitted(state: LaundromatState, event: GameEvent):
+    """Stub for proposal tracking."""
+    pass
+
+
+@EventRegistry.register("PROPOSAL_EVALUATED")
+def apply_proposal_evaluated(state: LaundromatState, event: GameEvent):
+    """Stub for proposal evaluation."""
+    pass
+
+
+@EventRegistry.register("PROPOSAL_APPROVED")
+def apply_proposal_approved(state: LaundromatState, event: GameEvent):
+    """Unlock revenue stream from approved proposal."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    stream_name = getattr(event, "revenue_stream_name", payload.get("revenue_stream_name"))
+    
+    if stream_name and stream_name in state.revenue_streams:
+        state.revenue_streams[stream_name].unlocked = True
+
+
+@EventRegistry.register("PROPOSAL_REJECTED")
+def apply_proposal_rejected(state: LaundromatState, event: GameEvent):
+    """Stub for proposal rejection."""
+    pass
+
+
+@EventRegistry.register("LOCATION_ASSIGNED")
+def apply_location_assigned(state: LaundromatState, event: GameEvent):
+    """Stub for zone assignment."""
+    pass
+
+
+@EventRegistry.register("ZONE_TRAFFIC_SHIFTED")
+def apply_zone_traffic_shifted(state: LaundromatState, event: GameEvent):
+    """Stub for traffic changes."""
+    pass
+
 

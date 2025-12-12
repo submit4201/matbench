@@ -35,7 +35,6 @@ htmlcov/
 .bak/
 # Logs
 logs/
-*.log
 # Editor
 .vscode/
 .idea/

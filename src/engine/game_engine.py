@@ -17,9 +17,10 @@ from src.engine.metrics_auditor import MetricsAuditor
 from src.engine.persistence.event_repo import EventRepository
 from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
-from src.models.events.finance import DailyRevenueProcessed
+from src.models.events.finance import DailyRevenueProcessed, BillGenerated, WeeklySpendingReset, WeeklyReportGenerated
 from src.models.events.operations import MachineWearUpdated, MarketingBoostDecayed
 from src.models.events.social import ReputationChanged, ScandalStarted
+from src.models.events.commerce import ShipmentReceived
 import copy
 # Load handlers modules to register them
 import src.engine.actions.handlers 
@@ -362,26 +363,48 @@ class GameEngine:
             for agent_id in self.agent_ids:
                 self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.ANNOUNCEMENT)
 
-        # 1.5 Process Pending Deliveries (Logic remains for now, could be event-ized later)
+        # 1.5 Process Pending Deliveries via Events
+        delivery_events = []
         for agent_id, state in self.states.items():
             if hasattr(state, "pending_deliveries"):
-                remaining_deliveries = []
+                arrived = []
+                remaining = []
                 for delivery in state.pending_deliveries:
                     if delivery["arrival_week"] <= self.time_system.current_week:
-                        # Arrived!
-                        item = delivery["item"]
-                        qty = delivery["quantity"]
-                        state.inventory[item] = state.inventory.get(item, 0) + qty
-                        
-                        # Notify
-                        self.communication.send_system_message(
-                            recipient_id=agent_id,
-                            content=f"Delivery of {qty} {item} from {delivery['vendor_name']} has arrived.",
-                            week=self.time_system.current_week
-                        )
+                        arrived.append(delivery)
                     else:
-                        remaining_deliveries.append(delivery)
-                state.pending_deliveries = remaining_deliveries
+                        remaining.append(delivery)
+                
+                # Emit events for arrived deliveries
+                for delivery in arrived:
+                    event = ShipmentReceived(
+                        week=self.time_system.current_week,
+                        agent_id=agent_id,
+                        order_id=delivery.get("order_id", delivery.get("id", "unknown")),
+                        items_received={delivery["item"]: delivery["quantity"]}
+                    )
+                    delivery_events.append(event)
+                    
+                    # Notify (side effect - OK for now)
+                    self.communication.send_system_message(
+                        recipient_id=agent_id,
+                        content=f"Delivery of {delivery['quantity']} {delivery['item']} from {delivery.get('vendor_name', 'supplier')} has arrived.",
+                        week=self.time_system.current_week
+                    )
+                
+                # Emit DeliveryListUpdated event (replaces direct mutation)
+                from src.models.events.commerce import DeliveryListUpdated
+                delivery_events.append(DeliveryListUpdated(
+                    week=self.time_system.current_week,
+                    agent_id=agent_id,
+                    remaining_deliveries=remaining
+                ))
+        
+        # Save & Apply delivery events
+        if delivery_events:
+            self.event_repo.save_batch(delivery_events)
+            for event in delivery_events:
+                StateBuilder.apply_event(self.states[event.agent_id], event)
 
 
         # 2. Simulate Week
@@ -424,6 +447,43 @@ class GameEngine:
                         )
                         weekly_events.append(wear_event)
 
+                # --- Generate Bills from Accumulated Weekly Spending ---
+                weekly_spending = getattr(state.primary_location, 'weekly_spending', {})
+                util_total = weekly_spending.get("utility", 0.0)
+                supply_total = weekly_spending.get("supplies", 0.0)
+                
+                if util_total > 0:
+                    util_bill_event = BillGenerated(
+                        week=self.time_system.current_week,
+                        agent_id=state.id,
+                        bill_id=f"utility_{self.time_system.current_week}_{state.id}",
+                        bill_type="Utility",
+                        amount=util_total,
+                        due_week=self.time_system.current_week + 1
+                    )
+                    weekly_events.append(util_bill_event)
+                
+                if supply_total > 0:
+                    supply_bill_event = BillGenerated(
+                        week=self.time_system.current_week,
+                        agent_id=state.id,
+                        bill_id=f"supplies_{self.time_system.current_week}_{state.id}",
+                        bill_type="Supplies",
+                        amount=supply_total,
+                        due_week=self.time_system.current_week + 1
+                    )
+                    weekly_events.append(supply_bill_event)
+                
+                # Reset accumulators
+                if util_total > 0 or supply_total > 0:
+                    reset_event = WeeklySpendingReset(
+                        week=self.time_system.current_week,
+                        agent_id=state.id,
+                        utility_total=util_total,
+                        supply_total=supply_total
+                    )
+                    weekly_events.append(reset_event)
+
                 # --- Social/Scandals ---
                 effects = self.event_manager.get_active_effects(agent_id)
                 
@@ -445,9 +505,18 @@ class GameEngine:
                 # Use current customer count from state (updated daily)
                 customer_count_est = state.active_customers * 7 # Rough est
                 
-                financial_report = self._process_financials(state, seasonal_mods, customer_count_est)
+                # Generate financial report as event
+                report_event = self._process_financials(state, seasonal_mods, customer_count_est)
+                weekly_events.append(report_event)
                 
-                # Financial System Orchestration
+                # Financial System Orchestration (uses data from event)
+                # Note: We need to reconstruct FinancialReport for FinancialSystem here
+                # until FinancialSystem is also refactored to use events
+                financial_report = FinancialReport(week=self.time_system.current_week)
+                financial_report.total_revenue = report_event.total_revenue
+                financial_report.expense_rent = report_event.expense_rent
+                financial_report.expense_utilities = report_event.expense_utilities
+                financial_report.expense_labor = report_event.expense_labor
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
                 
                 results[agent_id] = {
@@ -532,165 +601,148 @@ class GameEngine:
         self.logger.warning(f"Legacy action '{action.get('type')}' received but not handled by Registry. Ignoring.")
         return False
 
-    def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> FinancialReport:
+    def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> 'WeeklyReportGenerated':
         """
-        Generates weekly financial report using already-accumulated daily revenue.
-        Customer_count is now used for COGS calculation only (weekly total).
+        Generates weekly financial report as an event.
+        All state mutations are now handled by the event handler.
+        Returns: WeeklyReportGenerated event (state mutations deferred to handler)
         """
-        report = FinancialReport(week=self.time_system.current_week)
-        
-        # 1. Use accumulated daily revenue from revenue streams
+        # 1. Use accumulated daily revenue from revenue streams (READ ONLY)
         wash_stream = state.revenue_streams.get("Standard Wash")
         dry_stream = state.revenue_streams.get("Standard Dry")
         
-        # Use accumulated weekly values from daily processing
-        report.revenue_wash = wash_stream.weekly_revenue if wash_stream else 0.0
-        report.revenue_dry = dry_stream.weekly_revenue if dry_stream else 0.0
+        revenue_wash = wash_stream.weekly_revenue if wash_stream else 0.0
+        revenue_dry = dry_stream.weekly_revenue if dry_stream else 0.0
         
         # Get vending revenue from accumulated streams
         detergent_stream = state.revenue_streams.get("Detergent Sale")
         softener_stream = state.revenue_streams.get("Softener Sale")
         dryer_sheets_stream = state.revenue_streams.get("Dryer Sheets")
         
+        revenue_vending = 0.0
         if detergent_stream:
-            report.revenue_vending += detergent_stream.weekly_revenue or 0.0
+            revenue_vending += detergent_stream.weekly_revenue or 0.0
         if softener_stream:
-            report.revenue_vending += softener_stream.weekly_revenue or 0.0
+            revenue_vending += softener_stream.weekly_revenue or 0.0
         if dryer_sheets_stream:
-            report.revenue_vending += dryer_sheets_stream.weekly_revenue or 0.0
+            revenue_vending += dryer_sheets_stream.weekly_revenue or 0.0
 
         # Other vending streams
+        revenue_premium = 0.0
+        revenue_membership = 0.0
+        revenue_other = 0.0
         for name, stream in state.revenue_streams.items():
             if not stream.unlocked: continue
             if stream.category == "vending" and name not in ["Detergent Sale", "Softener Sale", "Dryer Sheets"]:
-                report.revenue_vending += stream.weekly_revenue or 0.0
+                revenue_vending += stream.weekly_revenue or 0.0
             elif stream.category == "premium":
-                report.revenue_premium += stream.weekly_revenue or 0.0
+                revenue_premium += stream.weekly_revenue or 0.0
             elif stream.category == "membership":
-                report.revenue_membership += stream.weekly_revenue or 0.0
+                revenue_membership += stream.weekly_revenue or 0.0
             elif stream.category == "other":
-                report.revenue_other += stream.weekly_revenue or 0.0
+                revenue_other += stream.weekly_revenue or 0.0
         
-        # Update State Active Customers (weekly total estimate)
-        state.active_customers = int(customer_count)
-        
-        report.total_revenue = (report.revenue_wash + report.revenue_dry + 
-                              report.revenue_vending + report.revenue_premium + 
-                              report.revenue_membership + report.revenue_other)
-        
-        # Reset stream counters for next week AFTER using them
-        for s in state.revenue_streams.values():
-            s.weekly_revenue = 0.0
+        total_revenue = (revenue_wash + revenue_dry + revenue_vending + 
+                        revenue_premium + revenue_membership + revenue_other)
         
         # 2. COGS (Supplies) - estimated based on customer count
-        # Inventory is already deducted daily, so this is for reporting only
         detergent_cost_unit = 0.15 
         softener_cost_unit = 0.10
         
-        # Estimate weekly supply cost based on customer behavior
-        # 50% of customers need soap, 30% need softener
         estimated_soap_used = customer_count * 0.5
         estimated_softener_used = customer_count * 0.3
         
-        report.cogs_supplies = (estimated_soap_used * detergent_cost_unit) + (estimated_softener_used * softener_cost_unit)
+        cogs_supplies = (estimated_soap_used * detergent_cost_unit) + (estimated_softener_used * softener_cost_unit)
         
-        # COGS for vending items (dryer sheets etc)
+        cogs_vending = 0.0
         for stream in state.revenue_streams.values():
             if stream.category == "vending" and stream.cost_per_unit > 0:
-                # Estimate 20% of customers buy vending items
                 estimated_sales = customer_count * 0.2
-                report.cogs_vending += estimated_sales * stream.cost_per_unit
+                cogs_vending += estimated_sales * stream.cost_per_unit
         
-        report.total_cogs = report.cogs_supplies + report.cogs_vending
-        report.gross_profit = report.total_revenue - report.total_cogs
+        total_cogs = cogs_supplies + cogs_vending
+        gross_profit = total_revenue - total_cogs
         
         # 3. Operating Expenses (Fixed)
-        # Rent: $1000/month -> $250/week
-        report.expense_rent = 250.0
+        expense_rent = 250.0
         
-        # Utilities: Variable based on usage + Fixed
-        # Water: $0.15/load, Elec: $0.20/wash, $0.25/dry, Gas: $0.10/dry
+        # Utilities
         water_cost = customer_count * 0.15
         elec_cost = customer_count * (0.20 + 0.25)
         gas_cost = customer_count * 0.10
-        report.expense_utilities = (water_cost + elec_cost + gas_cost) * seasonal_mods.get("heating_cost", 1.0)
+        expense_utilities = (water_cost + elec_cost + gas_cost) * seasonal_mods.get("heating_cost", 1.0)
         
         # Labor
-        report.expense_labor = sum(staff.wage * 20 for staff in state.staff) # 20hrs/week part time
+        expense_labor = sum(staff.wage * 20 for staff in state.staff)
         
-        # Maintenance
-        # Routine maintenance consumes parts occasionally
-        # Assume 1 part used per 10 machines per week on average
+        # Maintenance - calculate parts to use (NO MUTATION HERE)
         parts_needed = max(1, int(len(state.machines) / 10))
         parts_available = state.inventory.get("parts", 0)
         parts_used = min(parts_needed, parts_available)
         
-        # Deduct parts from inventory
-        if parts_used > 0:
-            state.inventory["parts"] = max(0, parts_available - parts_used)
-        
         base_maintenance_cost = 20.0 * len(state.machines)
-        
-        # If parts missing, maintenance is more expensive (emergency service) or less effective
         if parts_used < parts_needed:
-            base_maintenance_cost *= 1.5 # 50% penalty cost for calling external tech
+            base_maintenance_cost *= 1.5
             logger.info(f"Agent {state.id} missing parts for maintenance! Cost penalty applied.")
             
-        report.expense_maintenance = base_maintenance_cost
+        expense_maintenance = base_maintenance_cost
+        expense_insurance = 37.5
+        expense_other = 25.0
         
-        # Marketing
-        # If marketing boost is active, assume some spend was made (handled in actions, but maybe ongoing?)
-        # For now, just fixed insurance/other
-        report.expense_insurance = 37.5 # $150/month
-        report.expense_other = 25.0 # Internet/Security
+        total_operating_expenses = (expense_rent + expense_utilities + expense_labor + 
+                                   expense_maintenance + expense_insurance + expense_other)
         
-        report.total_operating_expenses = (report.expense_rent + report.expense_utilities + 
-                                         report.expense_labor + report.expense_maintenance + 
-                                         report.expense_marketing + report.expense_insurance + 
-                                         report.expense_other)
+        operating_income = gross_profit - total_operating_expenses
         
-        report.operating_income = report.gross_profit - report.total_operating_expenses
-        
-        # 4. Loans & Interest 
-        # (Managed by FinancialSystem/CreditSystem - interest added there? 
-        # Actually existing model code added interest in loop. FinancialSystem should handle this now.
-        # Removing manual loan loop here as per refactor plan to centralize.)
-        # Note: Report tracks expense_interest. We need to query FinancialSystem or calculate it here.
-        # Only simple interest calc for report for now.
-        for loan in state.loans: # Legacy loans list? Or use CreditSystem?
-             # For now, keep report estimation simple or rely on legacy list if not migrated fully.
+        # 4. Loans & Interest (READ ONLY)
+        expense_interest = 0.0
+        for loan in state.loans:
              if loan.balance > 0:
                 interest = loan.balance * (loan.interest_rate_monthly / 4.0)
-                report.expense_interest += interest
-                # Balance update delegated to FinancialSystem/Credit
+                expense_interest += interest
         
-        report.net_income_before_tax = report.operating_income - report.expense_interest + report.income_interest - report.fines
+        net_income_before_tax = operating_income - expense_interest
         
-        # 5. Taxes (Quarterly Provision)
-        # We calculate provision weekly for reporting, but pay quarterly
-        report.tax_provision = self.economy_system.calculate_taxes(report.total_revenue, 
-                                                                 report.total_operating_expenses + report.total_cogs + report.expense_interest, 
-                                                                 0) # Deductions placeholder
+        # 5. Taxes
+        tax_provision = self.economy_system.calculate_taxes(total_revenue, 
+                                                           total_operating_expenses + total_cogs + expense_interest, 
+                                                           0)
         
-        report.net_income = report.net_income_before_tax - report.tax_provision
+        net_income = net_income_before_tax - tax_provision
         
-        # Update State
-        # Update State via Ledger (Cash Flow Basis)
-        report.cash_beginning = state.balance
+        # Cash (READ ONLY)
+        cash_beginning = state.balance
+        cash_ending = state.balance  # No changes until events apply
         
-        # Revenue already added daily in _process_daily_financials
-        # Do NOT add again here to avoid double-counting
-        
-        # Generate Bills delegated to FinancialSystem (bills are NOT auto-paid)
-        
-        # NOTE: COGS is Inventory usage (non-cash now), Loan Interest handled in report but cash handled in payment above.
-        # Tax Provision is accrual, not cash.
-        
-        # state.balance += report.net_income # <-- OLD LOGIC REMOVED
-        report.cash_ending = state.balance
-        
-        # Archive
-        state.financial_reports.append(report)
-        state.process_week(report.total_revenue, report.total_operating_expenses + report.total_cogs) # Legacy compat
-        
-        return report
+        # Create and return event (NO STATE MUTATIONS)
+        return WeeklyReportGenerated(
+            week=self.time_system.current_week,
+            agent_id=state.id,
+            revenue_wash=revenue_wash,
+            revenue_dry=revenue_dry,
+            revenue_vending=revenue_vending,
+            revenue_premium=revenue_premium,
+            revenue_membership=revenue_membership,
+            revenue_other=revenue_other,
+            total_revenue=total_revenue,
+            cogs_supplies=cogs_supplies,
+            cogs_vending=cogs_vending,
+            total_cogs=total_cogs,
+            gross_profit=gross_profit,
+            expense_rent=expense_rent,
+            expense_utilities=expense_utilities,
+            expense_labor=expense_labor,
+            expense_maintenance=expense_maintenance,
+            expense_insurance=expense_insurance,
+            expense_other=expense_other,
+            total_operating_expenses=total_operating_expenses,
+            operating_income=operating_income,
+            expense_interest=expense_interest,
+            net_income_before_tax=net_income_before_tax,
+            tax_provision=tax_provision,
+            net_income=net_income,
+            cash_beginning=cash_beginning,
+            cash_ending=cash_ending,
+            active_customers=int(customer_count),
+            parts_used=parts_used
+        )

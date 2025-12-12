@@ -113,7 +113,7 @@ class LocationState(GameModel):
     # Commercial
     price: float = settings.economy.default_price
     revenue_streams: Dict[str, RevenueStream] = Field(default_factory=dict) # Rev streams per location? Or global? Likely location.
-    weekly_spending: Dict[str, float] = Field(default_factory=dict) # Accumulated weekly expenses (e.g. utilities)
+    weekly_spending: Dict[str, float] = Field(default_factory=lambda: {"utility": 0.0, "supplies": 0.0})
     
     # Active
     active_customers: int = 0

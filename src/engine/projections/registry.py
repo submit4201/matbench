@@ -1,10 +1,13 @@
-from typing import Callable, Dict, List
-from src.models.world import LaundromatState
-from src.models.events.core import GameEvent
+from __future__ import annotations
+from typing import Callable, Dict, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.models.world import LaundromatState
+    from src.models.events.core import GameEvent
 
 # Type definition for an event handler
 # Function takes (State, Event) -> None (Mutates state in place)
-EventHandler = Callable[[LaundromatState, GameEvent], None]
+EventHandler = Callable[["LaundromatState", "GameEvent"], None]
 
 class EventRegistry:
     _handlers: Dict[str, List[EventHandler]] = {}
