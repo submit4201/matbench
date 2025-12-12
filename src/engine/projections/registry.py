@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Type
+from typing import Callable, Dict, List
 from src.models.world import LaundromatState
 from src.models.events.core import GameEvent
 

@@ -715,7 +715,6 @@ def get_state(agent_id: str = "p1"):
             "vendors": vendors_data,
             "supply_chain_events": game.vendor_manager.get_active_supply_chain_events()
         },
-        },
         "customer_thoughts": [
             {
                 "text": c.current_thought,

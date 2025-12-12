@@ -4,7 +4,7 @@ from src.models.world import LaundromatState
 from src.models.events.core import GameEvent
 from src.models.events.commerce import PriceSetEvent, InventoryStocked
 from src.models.events.finance import FundsTransferred, BillPaid
-from src.models.events.operations import MachinePurchased, MarketingCampaignStarted, TicketResolved, StaffHired, StaffFired, StaffTrained, StaffQuits
+from src.models.events.operations import MachinePurchased, MarketingCampaignStarted, TicketResolved, StaffHired, StaffFired, StaffTrained
 from src.models.events.social import ReputationChanged
 import uuid
 

@@ -1,6 +1,4 @@
-from typing import List, Optional, Dict, Any
-
-from pydantic import Field
+from typing import List, Dict
 
 from .core import GameEvent
 

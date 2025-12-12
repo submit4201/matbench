@@ -1,7 +1,6 @@
 import sys
 import os
 import json
-import random
 sys.path.append(os.getcwd())
 
 from src.engine.core.time import TimeSystem

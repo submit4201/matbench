@@ -1,7 +1,6 @@
 from src.agents.base_agent import Action, ActionType
 from src.world.laundromat import LaundromatState
 from src.server import _apply_action
-import pytest
 from unittest.mock import MagicMock
 
 # Mocking game global
