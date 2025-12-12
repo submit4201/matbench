@@ -2,10 +2,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from src.engine.projections.registry import EventRegistry
 from src.models.hierarchy import Machine, StaffMember, Building
+from src.models.social import TicketStatus
 
 if TYPE_CHECKING:
     from src.models.world import LaundromatState
     from src.models.events.core import GameEvent
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════
+
+def _evt(event, name: str, default=None):
+    """Extract field from event, checking both attrs and payload dict."""
+    payload = getattr(event, "payload", {}) or {}
+    return getattr(event, name, payload.get(name, default))
+
+def _remove_staff(state, staff_id: str) -> None:
+    """Remove staff member by ID from primary location."""
+    state.primary_location.staff = [
+        s for s in state.primary_location.staff if s.id != staff_id
+    ]
 
 @EventRegistry.register("STAFF_HIRED")
 def apply_staff_hired(state: LaundromatState, event: GameEvent):
@@ -215,12 +232,11 @@ def apply_customer_sentiment_recorded(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("TICKET_IGNORED")
 def apply_ticket_ignored(state: LaundromatState, event: GameEvent):
     """Mark ticket as ignored."""
-    payload = event.payload if hasattr(event, "payload") else {}
-    ticket_id = getattr(event, "ticket_id", payload.get("ticket_id"))
+    ticket_id = _evt(event, "ticket_id")
     
     for ticket in state.tickets:
         if ticket.id == ticket_id:
-            ticket.status = "ignored"
+            ticket.status = TicketStatus.IGNORED
             break
 
 

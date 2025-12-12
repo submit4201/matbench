@@ -56,6 +56,7 @@ simulation_log.json
 brain/
 .log/
 .test/
+test/.log/
 class.uml
 seq.uml
 newrelic.ini

@@ -123,20 +123,7 @@ class GameEngine:
         
         for agent_id, state in self.states.items():
             try:
-                # Compute event
-                event = self._process_daily_financials(state, seasonal_mods)
-                
-                # Persist + apply immediately for this agent
-                self.event_repo.save_batch([event])
-                StateBuilder.apply_event(state, event)
-                
-                # Build response directly from event payload + updated state
-                daily_results[agent_id] = {
-                    "customers": event.customer_count,
-                    "revenue": round(event.revenue_wash + event.revenue_dry + event.revenue_vending, 2),
-                    "day": self.time_system.current_day.value,
-                    "new_balance": round(state.balance, 2),
-                }
+                daily_results[agent_id] = self._run_daily_financials(agent_id, state, seasonal_mods)
             except Exception as e:
                 self.logger.error(f"Failed daily processing for {agent_id}: {e}")
                 daily_results[agent_id] = {"error": str(e)}
@@ -203,6 +190,7 @@ class GameEngine:
         daily_sheets_rev = 0.0
         
         customers_needing_soap = int(customer_count * 0.5)
+        soap_sold = 0  # Initialize to prevent UnboundLocalError
         
         detergent_stream = state.revenue_streams.get("Detergent Sale")
         if detergent_stream and detergent_stream.unlocked:
@@ -511,38 +499,8 @@ class GameEngine:
                 # Use domain object directly for financial system
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
                 
-                # Create event from report (single mapping)
-                report_event = WeeklyReportGenerated(
-                    week=self.time_system.current_week,
-                    agent_id=state.id,
-                    revenue_wash=financial_report.revenue_wash,
-                    revenue_dry=financial_report.revenue_dry,
-                    revenue_vending=financial_report.revenue_vending,
-                    revenue_premium=financial_report.revenue_premium,
-                    revenue_membership=financial_report.revenue_membership,
-                    revenue_other=financial_report.revenue_other,
-                    total_revenue=financial_report.total_revenue,
-                    cogs_supplies=financial_report.cogs_supplies,
-                    cogs_vending=financial_report.cogs_vending,
-                    total_cogs=financial_report.total_cogs,
-                    gross_profit=financial_report.gross_profit,
-                    expense_rent=financial_report.expense_rent,
-                    expense_utilities=financial_report.expense_utilities,
-                    expense_labor=financial_report.expense_labor,
-                    expense_maintenance=financial_report.expense_maintenance,
-                    expense_insurance=financial_report.expense_insurance,
-                    expense_other=financial_report.expense_other,
-                    total_operating_expenses=financial_report.total_operating_expenses,
-                    operating_income=financial_report.operating_income,
-                    expense_interest=financial_report.expense_interest,
-                    net_income_before_tax=financial_report.net_income_before_tax,
-                    tax_provision=financial_report.tax_provision,
-                    net_income=financial_report.net_income,
-                    cash_beginning=financial_report.cash_beginning,
-                    cash_ending=financial_report.cash_ending,
-                    active_customers=financial_report.active_customers,
-                    parts_used=financial_report.parts_used
-                )
+                # Create event from report (using helper for single mapping)
+                report_event = self._build_weekly_report_event(state, financial_report)
                 weekly_events.append(report_event)
                 
                 results[agent_id] = {
@@ -748,3 +706,72 @@ class GameEngine:
         report.active_customers = int(customer_count)
         
         return report
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # HELPER METHODS FOR ORCHESTRATION
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    def _run_daily_financials(
+        self, 
+        agent_id: str, 
+        state: LaundromatState, 
+        seasonal_mods: Dict[str, float]
+    ) -> Dict[str, Any]:
+        """
+        Process daily financials for a single agent.
+        Computes event, persists, applies, and returns response dict.
+        """
+        event = self._process_daily_financials(state, seasonal_mods)
+        
+        # Persist + apply immediately
+        self.event_repo.save_batch([event])
+        StateBuilder.apply_event(state, event)
+        
+        # Build response from event + updated state
+        return {
+            "customers": event.customer_count,
+            "revenue": round(event.revenue_wash + event.revenue_dry + event.revenue_vending, 2),
+            "day": self.time_system.current_day.value,
+            "new_balance": round(state.balance, 2),
+        }
+    
+    def _build_weekly_report_event(
+        self, 
+        state: LaundromatState, 
+        report: FinancialReport
+    ) -> WeeklyReportGenerated:
+        """
+        Create WeeklyReportGenerated event from FinancialReport.
+        Single mapping location to reduce duplication.
+        """
+        return WeeklyReportGenerated(
+            week=self.time_system.current_week,
+            agent_id=state.id,
+            revenue_wash=report.revenue_wash,
+            revenue_dry=report.revenue_dry,
+            revenue_vending=report.revenue_vending,
+            revenue_premium=report.revenue_premium,
+            revenue_membership=report.revenue_membership,
+            revenue_other=report.revenue_other,
+            total_revenue=report.total_revenue,
+            cogs_supplies=report.cogs_supplies,
+            cogs_vending=report.cogs_vending,
+            total_cogs=report.total_cogs,
+            gross_profit=report.gross_profit,
+            expense_rent=report.expense_rent,
+            expense_utilities=report.expense_utilities,
+            expense_labor=report.expense_labor,
+            expense_maintenance=report.expense_maintenance,
+            expense_insurance=report.expense_insurance,
+            expense_other=report.expense_other,
+            total_operating_expenses=report.total_operating_expenses,
+            operating_income=report.operating_income,
+            expense_interest=report.expense_interest,
+            net_income_before_tax=report.net_income_before_tax,
+            tax_provision=report.tax_provision,
+            net_income=report.net_income,
+            cash_beginning=report.cash_beginning,
+            cash_ending=report.cash_ending,
+            active_customers=report.active_customers,
+            parts_used=report.parts_used
+        )
