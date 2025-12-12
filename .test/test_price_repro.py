@@ -1,11 +1,10 @@
-from src.agents.base_agent import Action, ActionType
-from src.world.laundromat import LaundromatState
-from src.server import _apply_action
-import pytest
 from unittest.mock import MagicMock
 
 # Mocking game global
 import src.server
+from src.agents.base_agent import Action, ActionType
+from src.world.laundromat import LaundromatState
+from src.server import _apply_action
 src.server.game = MagicMock()
 
 def test_set_price_bug_reproduction():
