@@ -30,6 +30,14 @@ class MachineWearUpdated(GameEvent):
     current_condition: float
 
 
+class CleanlinessUpdated(GameEvent):
+    """Event for location cleanliness update."""
+    type: str = "CLEANLINESS_UPDATED"
+    new_cleanliness: float
+    delta: float = 0.0
+    reason: str = "weekly_decay"
+
+
 class MaintenancePerformed(GameEvent):
     """Event for performing maintenance."""
     type: str = "MAINTENANCE_PERFORMED"

@@ -54,3 +54,5 @@ frontend/yarn-error.log*
 verify_output.txt
 simulation_log.json
 brain/
+.log/
+.test/

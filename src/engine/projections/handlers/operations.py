@@ -143,6 +143,14 @@ def apply_marketing_boost_decayed(state: LaundromatState, event: GameEvent):
     state.primary_location.marketing_boost = remaining
 
 
+@EventRegistry.register("CLEANLINESS_UPDATED")
+def apply_cleanliness_updated(state: LaundromatState, event: GameEvent):
+    """Apply cleanliness update from weekly calculation."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    new_cleanliness = getattr(event, "new_cleanliness", payload.get("new_cleanliness"))
+    if new_cleanliness is not None:
+        state.primary_location.cleanliness = max(0.0, min(1.0, new_cleanliness))
+
 # --- Orphan Event Handlers (Future Feature Support) ---
 
 @EventRegistry.register("MACHINE_STATE_CHANGED")
