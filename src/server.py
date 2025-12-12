@@ -247,11 +247,42 @@ def _apply_action(state: LaundromatState, action: Action):
                     "vendor_name": vendor.profile.name
                 })
                 
+                # Auto-schedule delivery on calendar
+                try:
+                    from src.engine.core.calendar import ActionCategory, ActionPriority
+                    calendar = game.engine.get_calendar(agent_id)
+                    calendar.schedule_action(
+                        category=ActionCategory.SUPPLY_ORDER,
+                        title=f"Delivery: {actual_qty} {inventory_item}",
+                        description=f"Delivery from {vendor.profile.name} - {actual_qty} units of {inventory_item}",
+                        week=arrival_week,
+                        day=1,  # Monday
+                        priority=ActionPriority.MEDIUM,
+                        current_week=game.engine.time_system.current_week
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to auto-schedule delivery: {e}")
+                
+                # Send detailed message about upcoming delivery
+                game.engine.communication.send_message(
+                    sender_id="Supply Chain",
+                    recipient_id=agent_id,
+                    content=f"📦 **Order Confirmed**: {actual_qty} {inventory_item} from {vendor.profile.name}. Expected delivery: Week {arrival_week}.",
+                    week=game.engine.time_system.current_week
+                )
+                
             if result.get("events"):
                 for event_desc in result["events"]:
                     game.engine.event_manager.active_events.append(
                         # Create a temporary event for notification (must include target_agent_id)
                         type("TempEvent", (), {"description": f"Supply Chain: {event_desc}", "target_agent_id": None, "type": None, "effect_data": {}, "duration": 1})()
+                    )
+                    # Send detailed news-style message
+                    game.engine.communication.send_message(
+                        sender_id="Supply Chain News",
+                        recipient_id=agent_id,
+                        content=f"⚠️ **SUPPLY CHAIN ALERT**\n\n{event_desc}\n\nThis may affect your scheduled deliveries. Check your calendar for updated arrival times.",
+                        week=game.engine.time_system.current_week
                     )
 
 
@@ -279,6 +310,46 @@ def _apply_action(state: LaundromatState, action: Action):
                 state.machines.append(Machine(f"washer_{len(state.machines)+1}", "washer"))
             else:
                 state.machines += 1
+    elif action.type == ActionType.PERFORM_MAINTENANCE:
+        # Calculate parts needed (1 per 5 machines, min 1)
+        machine_count = len(state.machines) if isinstance(state.machines, list) else state.machines
+        parts_needed = max(1, int(machine_count / 5)) if machine_count > 0 else 0
+        
+        parts_in_stock = state.inventory.get("parts", 0)
+        
+        if parts_in_stock >= parts_needed:
+            # Deduct parts
+            state.inventory["parts"] -= parts_needed
+            
+            # Improve condition
+            if isinstance(state.machines, list):
+                for m in state.machines:
+                    m.condition = min(1.0, m.condition + 0.2)
+                    if m.is_broken and m.condition > 0.5:
+                         m.is_broken = False
+            
+    elif action.type == ActionType.EMERGENCY_REPAIR:
+        # High cost repair: $150 per broken machine
+        broken_count = state.broken_machines
+        if broken_count > 0:
+            cost = broken_count * 150.0
+            
+            if state.balance >= cost:
+                from src.engine.finance.models import TransactionCategory
+                state.ledger.add(
+                    -cost,
+                    TransactionCategory.EXPENSE,
+                    "Emergency Repair Service",
+                    game.engine.time_system.current_week
+                )
+                
+                # Fix all broken machines
+                if isinstance(state.machines, list):
+                    for m in state.machines:
+                        if m.is_broken:
+                            m.is_broken = False
+                            m.condition = 1.0 # Fully restored
+            
     elif action.type == ActionType.MARKETING_CAMPAIGN:
         cost = action.parameters.get("cost", 0)
         from src.engine.finance.models import TransactionCategory
@@ -463,6 +534,45 @@ def _apply_action(state: LaundromatState, action: Action):
             else:
                 print(f"Error resolving dilemma: {result['error']}")
 
+    elif action.type == ActionType.APPLY_FOR_LOAN:
+        # ! Apply for a new loan via the credit system
+        loan_type = action.parameters.get("loan_type", "equipment_loan")
+        amount = action.parameters.get("amount", 5000)
+        
+        if hasattr(game.engine, "credit_system"):
+            result = game.engine.credit_system.apply_for_loan(
+                agent_id=state.id,
+                loan_type=loan_type,
+                amount=amount,
+                current_week=game.engine.time_system.current_week
+            )
+            
+            if result.get("approved"):
+                # Record the loan deposit in ledger
+                from src.engine.finance.models import TransactionCategory
+                state.ledger.add(
+                    amount,
+                    TransactionCategory.LOAN,
+                    f"Loan Approved: {loan_type}",
+                    game.engine.time_system.current_week
+                )
+                
+                # Send confirmation message
+                game.engine.communication.send_system_message(
+                    recipient_id=state.id,
+                    content=f"🎉 Loan Approved!\n\nType: {loan_type}\nAmount: ${amount:,.2f}\nInterest Rate: {result.get('interest_rate', 0) * 100:.1f}%\nWeekly Payment: ${result.get('weekly_payment', 0):,.2f}",
+                    week=game.engine.time_system.current_week,
+                    intent=MessageIntent.FORMAL_BUSINESS
+                )
+            else:
+                # Send rejection message
+                game.engine.communication.send_system_message(
+                    recipient_id=state.id,
+                    content=f"❌ Loan Denied\n\nReason: {result.get('reason', 'Credit score too low')}",
+                    week=game.engine.time_system.current_week,
+                    intent=MessageIntent.FORMAL_BUSINESS
+                )
+
 
 def _record_turn(agent_id: str, agent_name: str, thinking: List[str], 
                  actions: List[Action], raw_response: str, 
@@ -532,11 +642,34 @@ def get_state(agent_id: str = "p1"):
         state_dump['broken_machines'] = l.broken_machines
         state_dump['reputation'] = l.reputation  # Add reputation from property
         # Convert machines list to count for frontend compatibility
-        if isinstance(state_dump.get('machines'), list):
-            state_dump['machines'] = len(state_dump['machines'])
+        # if isinstance(state_dump.get('machines'), list):
+        #    state_dump['machines'] = len(state_dump['machines'])
         # Add metrics
         if hasattr(l, 'get_inventory_metrics'):
             state_dump['inventory_metrics'] = l.get_inventory_metrics()
+        
+        # Inject Loans from Credit System
+        if hasattr(game.engine, 'credit_system'):
+            # Get accounts for this agent
+            accounts = game.engine.credit_system.get_agent_accounts(pid)
+            # The frontend expects 'loans' list in Laundromat object with specific fields
+            state_dump['loans'] = []
+            for acc in accounts:
+                # Calculate weeks remaining
+                weeks_passed = game.engine.time_system.current_week - acc.opened_week
+                weeks_remaining = max(0, acc.term_weeks - weeks_passed)
+                
+                state_dump['loans'].append({
+                    "name": acc.account_type.replace('_', ' ').capitalize(),
+                    "principal": acc.original_amount,
+                    "balance": acc.current_balance,
+                    "interest_rate_monthly": acc.interest_rate, # This is usually weekly in our engine but named monthly in type?
+                    "term_weeks": acc.term_weeks,
+                    "weeks_remaining": weeks_remaining,
+                    "weekly_payment": acc.weekly_payment,
+                    "is_defaulted": acc.is_defaulted,
+                    "missed_payments": len([p for p in acc.payments if p.status == 'missed'])
+                })
         
         laundromats_data[pid] = state_dump
 
@@ -582,7 +715,14 @@ def get_state(agent_id: str = "p1"):
             "vendors": vendors_data,
             "supply_chain_events": game.vendor_manager.get_active_supply_chain_events()
         },
-        "customer_thoughts": [c.current_thought for c in game.customers if c.current_thought],
+        },
+        "customer_thoughts": [
+            {
+                "text": c.current_thought,
+                "laundromat_id": c.current_thought_laundromat_id or "unknown"
+            }
+            for c in game.customers if c.current_thought
+        ],
         "scenario": game.scenario_name,
         "ai_thoughts": game.ai_thoughts,
         "ai_thoughts_history": getattr(game, 'ai_thoughts_history', [])[-5:],  # Last 5 turns
@@ -656,6 +796,146 @@ def negotiate_price(req: NegotiateRequest):
         "success": result.get("success", False),
         "message": result.get("message", ""),
         "vendor_id": req.vendor_id
+    }
+
+
+# --- GM-Powered Vendor Negotiation Chat ---
+class NegotiateChatRequest(BaseModel):
+    agent_id: str
+    vendor_id: str
+    item: str
+    message: str  # Player's negotiation message
+
+@app.post("/negotiate/chat")
+def negotiate_chat(req: NegotiateChatRequest):
+    """
+    Chat-based negotiation with vendor, powered by Game Master LLM.
+    The GM roleplays as the vendor and responds to the player's message.
+    Conversation history is persisted per vendor/player pair.
+    """
+    import datetime
+    
+    if req.agent_id != "p1":
+        raise HTTPException(status_code=403, detail="Only p1 can negotiate")
+    
+    vendor = game.vendor_manager.get_vendor(req.vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    
+    agent_state = game.engine.states["p1"]
+    
+    # Build vendor profile for roleplay
+    vendor_profile = {
+        "name": vendor.profile.name if hasattr(vendor, 'profile') else vendor.name,
+        "slogan": vendor.profile.slogan if hasattr(vendor, 'profile') else "",
+        "description": vendor.profile.description if hasattr(vendor, 'profile') else "",
+        "reliability": vendor.profile.reliability if hasattr(vendor, 'profile') else 0.8
+    }
+    
+    # Build negotiation context
+    base_price = vendor.profile.base_prices.get(req.item, 10.0) if hasattr(vendor, 'profile') else 10.0
+    current_price = vendor.get_price(req.item, agent_id=req.agent_id) if hasattr(vendor, 'get_price') else base_price
+    
+    social_score = agent_state.social_score.total_score if hasattr(agent_state.social_score, "total_score") else agent_state.reputation
+    
+    # Get conversation history for this player-vendor pair
+    history_key = req.agent_id
+    conversation_history = vendor.negotiation_history.get(history_key, [])
+    
+    # Filter history for this item (optional: you can remove this to share history across items)
+    item_history = [h for h in conversation_history if h.get("item") == req.item]
+    
+    negotiation_context = {
+        "item": req.item,
+        "base_price": base_price,
+        "current_price": current_price,
+        "player_reputation": social_score,
+        "player_name": agent_state.name,
+        "order_history": getattr(vendor, 'order_history', {}).get(req.agent_id, 0),
+        "conversation_history": item_history[-10:]  # Last 10 messages for context
+    }
+    
+    # Store player message in history
+    player_entry = {
+        "role": "player",
+        "message": req.message,
+        "item": req.item,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    
+    if history_key not in vendor.negotiation_history:
+        vendor.negotiation_history[history_key] = []
+    vendor.negotiation_history[history_key].append(player_entry)
+    
+    # Use Game Master to roleplay as vendor
+    if hasattr(game.engine, 'game_master'):
+        result = game.engine.game_master.roleplay_as_vendor(
+            vendor_profile, req.message, negotiation_context
+        )
+    else:
+        # Fallback basic response
+        result = {
+            "vendor_response": f"Thank you for your interest. The price for {req.item} is ${base_price:.2f}.",
+            "accepted": False,
+            "offered_price": base_price,
+            "discount_percent": 0
+        }
+    
+    # Store vendor response in history
+    vendor_entry = {
+        "role": "vendor",
+        "message": result.get("vendor_response", ""),
+        "item": req.item,
+        "offered_price": result.get("offered_price"),
+        "accepted": result.get("accepted", False),
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    vendor.negotiation_history[history_key].append(vendor_entry)
+    
+    # If accepted, update the vendor's negotiated price for this player
+    if result.get("accepted") and result.get("offered_price"):
+        if hasattr(vendor, 'negotiated_discounts'):
+            if req.agent_id not in vendor.negotiated_discounts:
+                vendor.negotiated_discounts[req.agent_id] = {}
+            # Store as multiplier: offered_price / base_price
+            vendor.negotiated_discounts[req.agent_id][req.item] = result["offered_price"] / base_price
+    
+    return {
+        "vendor_id": req.vendor_id,
+        "vendor_name": vendor_profile["name"],
+        "item": req.item,
+        "player_message": req.message,
+        "vendor_response": result.get("vendor_response", ""),
+        "accepted": result.get("accepted", False),
+        "offered_price": result.get("offered_price"),
+        "discount_percent": result.get("discount_percent", 0),
+        "base_price": base_price
+    }
+
+
+@app.get("/negotiate/history/{vendor_id}/{agent_id}")
+def get_negotiation_history(vendor_id: str, agent_id: str, item: Optional[str] = None):
+    """
+    Get negotiation history between a player and vendor.
+    Optionally filter by item.
+    """
+    if agent_id != "p1":
+        raise HTTPException(status_code=403, detail="Only p1 history accessible")
+    
+    vendor = game.vendor_manager.get_vendor(vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    
+    history = vendor.negotiation_history.get(agent_id, [])
+    
+    if item:
+        history = [h for h in history if h.get("item") == item]
+    
+    return {
+        "vendor_id": vendor_id,
+        "agent_id": agent_id,
+        "item_filter": item,
+        "history": history[-50:]  # Last 50 messages
     }
 
 
@@ -974,6 +1254,28 @@ def next_turn():
             # We don't add revenue here because Engine already did it
     
     # 4. Advance Week Counter (Manually now)
+    
+    # [FIX] Record P1 (Human) History for Dashboard
+    # This ensures "end of week" state including sales/inventory changes is captured
+    p1_state = game.engine.states.get("p1")
+    if p1_state:
+        # Capture state after daily processing
+        state_dump = p1_state.model_dump(mode='json', exclude={'ledger'})
+        state_dump['balance'] = p1_state.balance
+        
+        # We don't have human actions here (they were API calls), but we need the state point
+        # We pass empty lists for actions/thinking
+        competitors = [game.engine.states[k].model_dump(mode='json', exclude={'ledger'}) for k in game.engine.states if k != "p1"]
+        events = [e.description for e in game.engine.event_manager.active_events]
+        
+        _record_turn(
+            "p1", "Human Player",
+            [], [], "", # No thinking/actions/response in this summary record
+            state_dump, state_dump, # Before/After are same here (snapshot)
+            competitors, events,
+            is_human=True
+        )
+
     game.engine.time_system.advance_week()
     print(f"[TURN] Advanced to Week {game.engine.time_system.current_week}")
 
@@ -1033,8 +1335,30 @@ def start_scenario(req: ScenarioRequest):
         "scenario": req.scenario_name,
         "message": f"Game started with scenario: {req.scenario_name or 'Free Play'}"
     }
-
 # --- Revenue Stream Endpoints ---
+
+# --- Market Trends Endpoint ---
+@app.get("/market")
+def get_market_trends():
+    """Get current market trends and resource prices"""
+    report = game.engine.market_system.get_market_report() if hasattr(game.engine, 'market_system') else {}
+    
+    # Also include vendor pricing for comparison
+    vendor_prices = {}
+    for vendor in game.vendor_manager.vendors.values():
+        vendor_prices[vendor.id] = {
+            "name": vendor.name,
+            "prices": vendor.profile.base_prices if hasattr(vendor, 'profile') else {}
+        }
+    
+    return {
+        "current_week": game.engine.time_system.current_week,
+        "trend": report,
+        "vendor_prices": vendor_prices,
+        "supply_chain_events": game.vendor_manager.get_active_supply_chain_events()
+    }
+
+
 class PriceUpdateRequest(BaseModel):
     agent_id: str
     price: float
@@ -1243,6 +1567,18 @@ def get_ai_thoughts_history():
     }
 
 
+@app.get("/history/{agent_id}")
+def get_history(agent_id: str):
+    """Get historical data for an agent"""
+    if not game.history:
+        return []
+    
+    records = game.history.get_agent_history(agent_id)
+    # Convert dataclasses to dicts
+    from dataclasses import asdict
+    return [asdict(r) for r in records]
+
+
 @app.get("/inventory")
 def get_inventory(agent_id: str = "p1"):
     """Get current inventory and pending deliveries for an agent"""
@@ -1414,6 +1750,81 @@ def schedule_action(agent_id: str, request: ScheduleRequest):
             "week": request.week,
             "day": request.day
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/calendar/{agent_id}/action/{action_id}")
+def delete_calendar_action(agent_id: str, action_id: str):
+    """Delete/cancel a calendar action"""
+    try:
+        calendar = game.engine.get_calendar(agent_id)
+        result = calendar.cancel_action(action_id)
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return {"status": "deleted", "action_id": action_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpdateActionRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    week: Optional[int] = None
+    day: Optional[int] = None
+    priority: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    recurrence_weeks: Optional[int] = None
+
+
+@app.put("/calendar/{agent_id}/action/{action_id}")
+def update_calendar_action(agent_id: str, action_id: str, request: UpdateActionRequest):
+    """Update a calendar action"""
+    from src.engine.core.calendar import ActionPriority
+    
+    try:
+        calendar = game.engine.get_calendar(agent_id)
+        action = calendar.scheduled_actions.get(action_id)
+        if not action:
+            raise HTTPException(status_code=404, detail="Action not found")
+        
+        # Update fields if provided
+        if request.title is not None:
+            action.title = request.title
+        if request.description is not None:
+            action.description = request.description
+        if request.week is not None:
+            action.scheduled_week = request.week
+        if request.day is not None:
+            action.scheduled_day = request.day
+        if request.priority is not None:
+            try:
+                action.priority = ActionPriority(request.priority)
+            except ValueError:
+                pass
+        if request.is_recurring is not None:
+            action.is_recurring = request.is_recurring
+        if request.recurrence_weeks is not None:
+            action.recurrence_weeks = request.recurrence_weeks
+        
+        return {
+            "status": "updated",
+            "action_id": action_id,
+            "action": {
+                "id": action.id,
+                "title": action.title,
+                "description": action.description,
+                "week": action.scheduled_week,
+                "day": action.scheduled_day,
+                "priority": action.priority.value,
+                "is_recurring": action.is_recurring,
+                "recurrence_weeks": action.recurrence_weeks
+            }
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

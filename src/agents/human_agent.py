@@ -28,32 +28,34 @@ class HumanAgent(BaseAgent):
             if cmd == "1" and len(choice) > 1:
                 try:
                     price = float(choice[1])
-                    return [Action(ActionType.SET_PRICE, {"price": price})]
+                    return [Action(type=ActionType.SET_PRICE, parameters={"amount": price})]
                 except ValueError:
                     print("Invalid price.")
             elif cmd == "2" and len(choice) > 1:
                 try:
                     cost = float(choice[1])
-                    return [Action(ActionType.MARKETING_CAMPAIGN, {"cost": cost})]
+                    return [Action(type=ActionType.MARKETING_CAMPAIGN, parameters={"cost": cost})]
                 except ValueError:
                     print("Invalid cost.")
             elif cmd == "3":
-                return [Action(ActionType.UPGRADE_MACHINE)]
+                return [Action(type=ActionType.UPGRADE_MACHINE)]
             elif cmd == "4" and len(choice) > 2:
                 recipient = choice[1]
                 content = " ".join(choice[2:])
-                return [Action(ActionType.SEND_MESSAGE, {"recipient_id": recipient, "content": content})]
+                return [Action(type=ActionType.SEND_MESSAGE, parameters={"recipient": recipient, "content": content})]
             elif cmd == "5" and len(choice) > 2:
                 item = choice[1]
                 try:
                     qty = int(choice[2])
-                    return [Action(ActionType.BUY_SUPPLIES, {"item": item, "quantity": qty})]
+                    # Note: We send BUY_SUPPLIES, but engine maps to BUY_INVENTORY or falls back. 
+                    # Assuming Legacy handles BUY_SUPPLIES or I should verify mapping.
+                    return [Action(type=ActionType.BUY_SUPPLIES, parameters={"item": item, "quantity": qty})]
                 except ValueError:
                     print("Invalid quantity.")
             elif cmd == "6" and len(choice) > 1:
                 ticket_id = choice[1]
-                return [Action(ActionType.RESOLVE_TICKET, {"ticket_id": ticket_id})]
+                return [Action(type=ActionType.RESOLVE_TICKET, parameters={"ticket_id": ticket_id})]
             elif cmd == "7":
-                return [Action(ActionType.WAIT)]
+                return [Action(type=ActionType.WAIT)]
             else:
                 print("Invalid command. Try again.")

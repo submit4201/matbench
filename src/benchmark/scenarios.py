@@ -27,7 +27,7 @@ class InitialConditions:
     
     def __post_init__(self):
         if self.inventory is None:
-            self.inventory = {"soap": 50, "softener": 50, "parts": 5}
+            self.inventory = {"detergent": 50, "softener": 50, "parts": 5}
 
 @dataclass
 class Scenario:
@@ -99,15 +99,15 @@ SCENARIOS = {
             machines=4, 
             price=5.0, 
             social_score=50,
-            inventory={"soap": 10, "softener": 10, "parts": 2}
+            inventory={"detergent": 10, "softener": 10, "parts": 2}
         ),
         p2_initial=InitialConditions(
             balance=80,
-            inventory={"soap": 10, "softener": 10, "parts": 2}
+            inventory={"detergent": 10, "softener": 10, "parts": 2}
         ),
         p3_initial=InitialConditions(
             balance=80,
-            inventory={"soap": 10, "softener": 10, "parts": 2}
+            inventory={"detergent": 10, "softener": 10, "parts": 2}
         ),
         events=[
             EventConfig(week=6, event_type="supply_shortage", severity=0.5),

@@ -14,10 +14,12 @@ from src.engine.commerce.proposals import ProposalManager
 from src.engine.commerce.vendor import VendorManager
 from src.engine.commerce.real_estate import RealEstateManager
 from src.engine.metrics_auditor import MetricsAuditor
+from src.engine.persistence.event_repo import EventRepository
+from src.engine.projections.state_builder import StateBuilder
+from src.engine.actions.registry import ActionRegistry
 import copy
-from src.utils.logger import get_logger
-
-logger = get_logger("src.engine", category="engine")
+# Load handlers modules to register them
+import src.engine.actions.handlers 
 
 class GameEngine:
     """
@@ -26,6 +28,14 @@ class GameEngine:
     """
     def __init__(self, agent_ids: List[str]):
         self.agent_ids = agent_ids
+        # In EventSourcing, state is derived. However, for performance we keep a "Current State" cache logic.
+        # But per instruction "Kill the Monolith", we should rely on Repo and Builder.
+        # For Phase 1 transition, I will keep 'self.states' but manage it via events.
+        
+        self.event_repo = EventRepository()
+        
+        # Init States - we can create initial events or just init objects.
+        # Creating initial objects for now to ease transition.
         self.states: Dict[str, LaundromatState] = {
             agent_id: LaundromatState(name=f"Laundromat {agent_id}", id=agent_id)
             for agent_id in agent_ids
@@ -92,8 +102,9 @@ class GameEngine:
         """
         Processes a single Day.
         1. Apply pending actions.
-        2. Advance Day.
-        3. If week ends, run process_week().
+        2. Process daily financials for each agent.
+        3. Advance Day.
+        4. If week ends, run process_week() for weekly-only tasks.
         """
         # 1. Apply Daily Actions
         for agent_id, actions in self.pending_actions.items():
@@ -102,20 +113,160 @@ class GameEngine:
                 self._apply_action(state, action)
             self.pending_actions[agent_id] = []
 
-        # 2. Advance Time (Day)
+        # 2. Process Daily Financials for each agent
+        seasonal_mods = self.time_system.get_seasonal_modifier()
+        daily_results = {}
+        
+        for agent_id, state in self.states.items():
+            try:
+                daily_results[agent_id] = self._process_daily_financials(state, seasonal_mods)
+            except Exception as e:
+                logger.error(f"Failed daily processing for {agent_id}: {e}")
+                daily_results[agent_id] = {"error": str(e)}
+
+        # 3. Advance Time (Day)
         week_advanced = self.time_system.advance_day()
         
-        # 3. Weekly Processing (if Sunday ended)
+        # 4. Weekly Processing (if Sunday ended) - bills, taxes, events, etc.
         results = {}
         if week_advanced:
             logger.info(f"Week advanced to {self.time_system.current_week}. Running Weekly Processes.")
             results = self.process_week()
+            results["daily"] = daily_results
         else:
-            # Just return empty results for mid-week days, or simple acknowledgment
             logger.info(f"Advanced to {self.time_system.current_day.value}")
-            results = {"status": "day_advanced", "current_day": self.time_system.current_day.value}
+            results = {
+                "status": "day_advanced", 
+                "current_day": self.time_system.current_day.value,
+                "daily": daily_results
+            }
             
         return results
+
+    def _process_daily_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float]) -> Dict[str, Any]:
+        """
+        Process daily revenue and expenses.
+        Customers visit daily, revenue is earned daily.
+        """
+        # Calculate daily customer count (weekly base / 7)
+        total_market = 2400  # Weekly market demand
+        base_customers = total_market / max(1, len(self.states)) / 7.0  # Daily share
+        
+        # Apply modifiers
+        raw_demand = base_customers * (1 + state.marketing_boost) * (state.social_score.total_score / 50.0)
+        
+        # Get active effects
+        effects = self.event_manager.get_active_effects(state.id)
+        raw_demand *= effects["demand_multiplier"]
+        
+        # Apply market trend
+        trend = self.economy_system.active_trend
+        if trend and trend.demand_shift != 1.0:
+            raw_demand *= trend.demand_shift
+        
+        # Capacity constraint
+        num_washers = sum(1 for m in state.machines if "washer" in m.type and not m.is_broken)
+        max_daily_capacity = num_washers * 7  # ~7 turns per day per machine
+        
+        customer_count = min(raw_demand, max_daily_capacity)
+        
+        # Calculate daily revenue
+        wash_stream = state.revenue_streams.get("Standard Wash")
+        dry_stream = state.revenue_streams.get("Standard Dry")
+        
+        wash_price = wash_stream.price if wash_stream else state.price
+        dry_price = dry_stream.price if dry_stream else state.price * 0.75
+        
+        daily_wash_rev = customer_count * wash_price
+        daily_dry_rev = customer_count * dry_price
+        
+        # Update revenue stream trackers (accumulate daily)
+        if wash_stream:
+            wash_stream.weekly_revenue = (wash_stream.weekly_revenue or 0) + daily_wash_rev
+        if dry_stream:
+            dry_stream.weekly_revenue = (dry_stream.weekly_revenue or 0) + daily_dry_rev
+        
+        # Vending sales (daily portion)
+        daily_vending = 0.0
+        customers_needing_soap = int(customer_count * 0.5)
+        
+        detergent_stream = state.revenue_streams.get("Detergent Sale")
+        if detergent_stream and detergent_stream.unlocked:
+            soap_sold = min(customers_needing_soap, state.inventory.get("detergent", 0))
+            soap_rev = soap_sold * detergent_stream.price
+            daily_vending += soap_rev
+            detergent_stream.weekly_revenue = (detergent_stream.weekly_revenue or 0) + soap_rev
+            # Deduct inventory
+            if soap_sold > 0:
+                state.inventory["detergent"] = state.inventory.get("detergent", 0) - soap_sold
+        
+        # Dryer sheets stream
+        dryer_sheets_stream = state.revenue_streams.get("Dryer Sheets")
+        if dryer_sheets_stream and dryer_sheets_stream.unlocked:
+            sheets_sold = customer_count * 0.2
+            sheets_rev = sheets_sold * dryer_sheets_stream.price
+            daily_vending += sheets_rev
+            dryer_sheets_stream.weekly_revenue = (dryer_sheets_stream.weekly_revenue or 0) + sheets_rev
+        
+        total_daily_revenue = daily_wash_rev + daily_dry_rev + daily_vending
+        
+        # Record revenue in ledger
+        if total_daily_revenue > 0:
+            state.ledger.add(
+                total_daily_revenue, 
+                "revenue", 
+                f"Daily Revenue (Day {self.time_system.current_day.value})", 
+                self.time_system.current_week
+            )
+        
+        # Update active customers for frontend
+        state.active_customers = int(customer_count)
+        
+        # === DAILY BILL CHECKING ===
+        # Check for overdue bills and send notifications
+        current_week = self.time_system.current_week
+        overdue_count = 0
+        due_soon_count = 0
+        
+        for bill in state.bills:
+            if bill.is_paid:
+                continue
+                
+            # Bill is overdue
+            if bill.due_week < current_week:
+                overdue_count += 1
+                # Send overdue notice (only once per bill - check if already notified)
+                overdue_key = f"overdue_{bill.id}"
+                if overdue_key not in getattr(state, '_notified_bills', set()):
+                    if not hasattr(state, '_notified_bills'):
+                        state._notified_bills = set()
+                    state._notified_bills.add(overdue_key)
+                    
+                    self.communication.send_system_message(
+                        recipient_id=state.id,
+                        content=f"⚠️ **OVERDUE BILL**\\n\\n{bill.name}: ${bill.amount:.2f}\\nWas due Week {bill.due_week}. Please pay immediately to avoid penalties.",
+                        week=current_week,
+                        intent=MessageIntent.ANNOUNCEMENT
+                    )
+                    
+            # Bill due this week (reminder on first day)
+            elif bill.due_week == current_week and self.time_system.current_day.value == "Monday":
+                due_soon_count += 1
+                self.communication.send_system_message(
+                    recipient_id=state.id,
+                    content=f"📋 **Bill Due This Week**\\n\\n{bill.name}: ${bill.amount:.2f}\\nDue by end of Week {bill.due_week}.",
+                    week=current_week,
+                    intent=MessageIntent.REMINDER
+                )
+        
+        return {
+            "customers": round(customer_count),
+            "revenue": round(total_daily_revenue, 2),
+            "day": self.time_system.current_day.value,
+            "new_balance": round(state.balance, 2),
+            "overdue_bills": overdue_count,
+            "bills_due_soon": due_soon_count
+        }
 
     def _calculate_staff_effects(self, state: LaundromatState) -> Dict[str, float]:
         """Calculates total bonuses from staff members."""
@@ -326,7 +477,40 @@ class GameEngine:
         return results
 
     def _apply_action(self, state: LaundromatState, action: Dict[str, Any]):
-        """Applies a single action to the state."""
+        """
+        Executes an action by looking up its handler, generating events, and applying them.
+        """
+        action_type = action.get("type")
+        week = self.time_system.current_week
+
+        # 1. Lookup Handler
+        handler = ActionRegistry.get_handler(action_type)
+        if not handler:
+            # Fallback for ACTIONS NOT YET MIGRATED
+            return self._apply_legacy_action(state, action)
+            
+        # 2. Execute Handler (Pure Logic)
+        try:
+            events = handler(state, action, week)
+        except Exception as e:
+            self.logger.error(f"Action Handler Failed [{action_type}]: {e}")
+            # If handler fails, maybe try legacy? No, that's dangerous.
+            return False
+            
+        if not events:
+            return False
+            
+        # 3. Persist Events
+        self.event_repo.save_batch(events)
+        
+        # 4. Update State (Rebuild or Apply)
+        for event in events:
+            StateBuilder._apply_event(state, event)
+            
+        return True
+
+    def _apply_legacy_action(self, state: LaundromatState, action: Dict[str, Any]):
+        """Applies a single action to the state (Legacy Monolith)."""
         action_type = action.get("type")
         
         if action_type == "SET_PRICE":
@@ -691,111 +875,73 @@ class GameEngine:
             self.communication.send_system_message(state.id, msg, self.time_system.current_week)
 
     def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> FinancialReport:
+        """
+        Generates weekly financial report using already-accumulated daily revenue.
+        Customer_count is now used for COGS calculation only (weekly total).
+        """
         report = FinancialReport(week=self.time_system.current_week)
         
-        # 1. Revenue Calculation
-        # Distribute customers across unlocked streams based on demand multipliers
-        # Simplified: Assume "Standard Wash" and "Standard Dry" get the bulk, others are add-ons
-        
-        # Reset all stream revenues for this week
-        for s in state.revenue_streams.values():
-            s.weekly_revenue = 0.0
-
-        # Base Wash/Dry
+        # 1. Use accumulated daily revenue from revenue streams
         wash_stream = state.revenue_streams.get("Standard Wash")
         dry_stream = state.revenue_streams.get("Standard Dry")
         
-        wash_price = wash_stream.price if wash_stream else state.price
-        dry_price = dry_stream.price if dry_stream else state.price * 0.75
+        # Use accumulated weekly values from daily processing
+        report.revenue_wash = wash_stream.weekly_revenue if wash_stream else 0.0
+        report.revenue_dry = dry_stream.weekly_revenue if dry_stream else 0.0
         
-        report.revenue_wash = customer_count * wash_price
-        if wash_stream: wash_stream.weekly_revenue = report.revenue_wash
-        
-        report.revenue_dry = customer_count * dry_price # Assume 100% dry ratio for simplicity for now
-        if dry_stream: dry_stream.weekly_revenue = report.revenue_dry
-        
-        # Add-ons (Vending, etc)
-        # Calculate specific supply sales
-        # Logic: 50% of customers bring their own soap. The rest buy if available.
-        customers_needing_soap = int(customer_count * 0.5)
-        customers_needing_softener = int(customer_count * 0.3) # 30% want softener and don't have it
-        
+        # Get vending revenue from accumulated streams
         detergent_stream = state.revenue_streams.get("Detergent Sale")
         softener_stream = state.revenue_streams.get("Softener Sale")
+        dryer_sheets_stream = state.revenue_streams.get("Dryer Sheets")
         
-        soap_sold = 0
-        softener_sold = 0
-        
-        if detergent_stream and detergent_stream.unlocked:
-             soap_sold = min(customers_needing_soap, state.inventory.get("detergent", 0))
-             soap_revenue = soap_sold * detergent_stream.price
-             report.revenue_vending += soap_revenue
-             detergent_stream.weekly_revenue = soap_revenue
-             
-        if softener_stream and softener_stream.unlocked:
-             softener_sold = min(customers_needing_softener, state.inventory.get("softener", 0))
-             softener_revenue = softener_sold * softener_stream.price
-             report.revenue_vending += softener_revenue
-             softener_stream.weekly_revenue = softener_revenue
+        if detergent_stream:
+            report.revenue_vending += detergent_stream.weekly_revenue or 0.0
+        if softener_stream:
+            report.revenue_vending += softener_stream.weekly_revenue or 0.0
+        if dryer_sheets_stream:
+            report.revenue_vending += dryer_sheets_stream.weekly_revenue or 0.0
 
+        # Other vending streams
         for name, stream in state.revenue_streams.items():
             if not stream.unlocked: continue
-            if stream.category == "vending" and name not in ["Detergent Sale", "Softener Sale"]:
-                # Other vending (Snacks & Drinks, Dryer Sheets)
-                if name == "Snacks & Drinks":
-                    # Snacks require inventory - 20% of customers want snacks
-                    customers_wanting_snacks = int(customer_count * 0.2)
-                    snacks_available = state.inventory.get("snacks", 0)
-                    snacks_sold = min(customers_wanting_snacks, snacks_available)
-                    if snacks_sold > 0:
-                        rev = snacks_sold * stream.price
-                        report.revenue_vending += rev
-                        stream.weekly_revenue = rev
-                        report.cogs_vending += snacks_sold * stream.cost_per_unit
-                        state.inventory["snacks"] = snacks_available - snacks_sold
-                else:
-                    # Dryer sheets etc - assume 20% of customers buy
-                    sales = customer_count * 0.2 * stream.price
-                    report.revenue_vending += sales
-                    stream.weekly_revenue = sales
-                    report.cogs_vending += customer_count * 0.2 * stream.cost_per_unit
+            if stream.category == "vending" and name not in ["Detergent Sale", "Softener Sale", "Dryer Sheets"]:
+                report.revenue_vending += stream.weekly_revenue or 0.0
             elif stream.category == "premium":
-                # Assume 5% take premium
-                sales = customer_count * 0.05 * stream.price
-                report.revenue_premium += sales
-                stream.weekly_revenue = sales # Track revenue for this stream
-                # Cost?
+                report.revenue_premium += stream.weekly_revenue or 0.0
+            elif stream.category == "membership":
+                report.revenue_membership += stream.weekly_revenue or 0.0
+            elif stream.category == "other":
+                report.revenue_other += stream.weekly_revenue or 0.0
         
-        # Update State Active Customers (for Frontend)
+        # Update State Active Customers (weekly total estimate)
         state.active_customers = int(customer_count)
         
         report.total_revenue = (report.revenue_wash + report.revenue_dry + 
                               report.revenue_vending + report.revenue_premium + 
                               report.revenue_membership + report.revenue_other)
         
-        # 2. COGS (Supplies)
-        # Detergent/Softener usage
-        # Total usage = Sold + Complimentary?
-        # For now, assume we ONLY sell. If they bring their own, we use 0.
-        # Wait, machines use water/elec, but soap is per load.
-        # If customer brings own soap, we don't use inventory.
-        # If customer buys soap, we use inventory.
+        # Reset stream counters for next week AFTER using them
+        for s in state.revenue_streams.values():
+            s.weekly_revenue = 0.0
         
-        soap_used = soap_sold
-        softener_used = softener_sold
-        
-        # Check if we ran out for those who needed it
-        if soap_sold < customers_needing_soap:
-            # Missed sales opportunity, maybe small rep hit?
-            # state.reputation -= 0.1
-            pass
-        
-        # Calculate Cost (Replacement Cost)
-        # We use a standard replacement cost for reporting
+        # 2. COGS (Supplies) - estimated based on customer count
+        # Inventory is already deducted daily, so this is for reporting only
         detergent_cost_unit = 0.15 
         softener_cost_unit = 0.10
         
-        report.cogs_supplies = (soap_used * detergent_cost_unit) + (softener_used * softener_cost_unit)
+        # Estimate weekly supply cost based on customer behavior
+        # 50% of customers need soap, 30% need softener
+        estimated_soap_used = customer_count * 0.5
+        estimated_softener_used = customer_count * 0.3
+        
+        report.cogs_supplies = (estimated_soap_used * detergent_cost_unit) + (estimated_softener_used * softener_cost_unit)
+        
+        # COGS for vending items (dryer sheets etc)
+        for stream in state.revenue_streams.values():
+            if stream.category == "vending" and stream.cost_per_unit > 0:
+                # Estimate 20% of customers buy vending items
+                estimated_sales = customer_count * 0.2
+                report.cogs_vending += estimated_sales * stream.cost_per_unit
         
         report.total_cogs = report.cogs_supplies + report.cogs_vending
         report.gross_profit = report.total_revenue - report.total_cogs
@@ -819,21 +965,10 @@ class GameEngine:
         # Assume 1 part used per 10 machines per week on average
         parts_needed = max(1, int(len(state.machines) / 10))
         parts_available = state.inventory.get("parts", 0)
-        
         parts_used = min(parts_needed, parts_available)
         
-        # Update Inventory Usage
-        usage = {
-            "detergent": soap_used,
-            "softener": softener_used,
-            "parts": parts_used
-        }
-        if hasattr(state, "update_inventory_usage"):
-            state.update_inventory_usage(usage)
-        else:
-            # Fallback if method missing
-            state.inventory["detergent"] = max(0, detergent_available - soap_used)
-            state.inventory["softener"] = max(0, softener_available - softener_used)
+        # Deduct parts from inventory
+        if parts_used > 0:
             state.inventory["parts"] = max(0, parts_available - parts_used)
         
         base_maintenance_cost = 20.0 * len(state.machines)
@@ -885,10 +1020,10 @@ class GameEngine:
         # Update State via Ledger (Cash Flow Basis)
         report.cash_beginning = state.balance
         
-        # Add Cash Inflows
-        state.ledger.add(report.total_revenue, "revenue", "Weekly Revenue", self.time_system.current_week)
+        # Revenue already added daily in _process_daily_financials
+        # Do NOT add again here to avoid double-counting
         
-        # Generate Bills delegated to FinancialSystem
+        # Generate Bills delegated to FinancialSystem (bills are NOT auto-paid)
         
         # NOTE: COGS is Inventory usage (non-cash now), Loan Interest handled in report but cash handled in payment above.
         # Tax Provision is accrual, not cash.

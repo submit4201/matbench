@@ -1,0 +1,19 @@
+DEBUG: Registry Keys: ['SET_PRICE', 'BUY_SUPPLIES', 'UPGRADE_MACHINE', 'MARKETING_CAMPAIGN', 'RESOLVE_TICKET']
+DEBUG: Initial Machines: 0
+DEBUG: Handler for SET_PRICE: <function handle_set_price at 0x000001E3A97F5DD0>
+DEBUG: Calling handler manually...
+Verifying Phase 2 Actions...
+
+--- Testing SET_PRICE ---
+✓ SET_PRICE Success: State updated to 7.5
+✓ PriceSetEvent found in repo.
+
+--- Testing BUY_SUPPLIES ---
+✓ BUY_SUPPLIES Success: Bal 4980.0, Inv 210
+
+--- Testing UPGRADE_MACHINE ---
+✓ UPGRADE_MACHINE Success: Machine count increased.
+  New Machine: id='M-ed2255a0-21bc-4692-bc01-a7da987253a2' type='standard_washer' condition=1.0 is_broken=False age_weeks=0 location_id=None
+
+--- Testing MARKETING_CAMPAIGN ---
+✓ MARKETING_CAMPAIGN Success: Bal 4380.0, Boost 1.0

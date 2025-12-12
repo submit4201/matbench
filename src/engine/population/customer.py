@@ -93,6 +93,7 @@ class Customer:
         self.persona = Persona.generate_random()
         self.memory: Dict[str, CustomerMemory] = {}
         self.current_thought: str = ""
+        self.current_thought_laundromat_id: str = None # Track who the thought is about
         self.bias_map: Dict[str, float] = {} # agent_id -> bias score (-1.0 to 1.0)
 
     def decide_laundromat(self, laundromats: List['Laundromat']) -> 'Laundromat':
@@ -105,6 +106,7 @@ class Customer:
         if random.random() < self.persona.irrationality_factor:
             mood_swing = random.uniform(-5.0, 5.0)
             self.current_thought = "I'm feeling unpredictable today!"
+            self.current_thought_laundromat_id = None
 
         for l in laundromats:
             score = 0
@@ -138,8 +140,10 @@ class Customer:
         
         if chosen_laundromat:
             self.current_thought = f"I'm going to {chosen_laundromat.name}. Hope it's good!"
+            self.current_thought_laundromat_id = chosen_laundromat.id
         else:
             self.current_thought = "Nowhere good to go..."
+            self.current_thought_laundromat_id = None
 
         return chosen_laundromat
 
@@ -150,12 +154,14 @@ class Customer:
         # Spite Check (Irrational refusal)
         if random.random() < self.persona.irrationality_factor * 0.1: # Small chance to just leave
              self.current_thought = f"I walked into {laundromat.name} but just didn't like the vibe. Leaving."
+             self.current_thought_laundromat_id = laundromat.id
              return False
 
         # Check Inventory (use 'detergent' key - that's what the inventory actually uses)
         if laundromat.inventory.get("detergent", 0) <= 0:
             self._create_ticket(laundromat, TicketType.OUT_OF_SOAP, "No soap available!", week)
             self.current_thought = f"Ugh, {laundromat.name} is out of soap! Never coming back."
+            self.current_thought_laundromat_id = laundromat.id
             return False
         
         # Consume Inventory
@@ -165,16 +171,19 @@ class Customer:
         if random.random() > self.persona.patience and laundromat.broken_machines > 0:
              self._create_ticket(laundromat, TicketType.MACHINE_BROKEN, "Machine ate my coin!", week)
              self.current_thought = f"My machine at {laundromat.name} broke! I'm so mad!"
+             self.current_thought_laundromat_id = laundromat.id
              return False
 
         # Drama Event (Irrational Complaint)
         if random.random() < self.persona.irrationality_factor * 0.2: # 20% of irrationality factor
             self._create_ticket(laundromat, TicketType.OTHER, "The lighting is too aggressive!", week)
             self.current_thought = f"I demanded to speak to the manager at {laundromat.name} about the lighting."
+            self.current_thought_laundromat_id = laundromat.id
             return False
 
         # Success!
         self.current_thought = f"Had a great wash at {laundromat.name}. Fresh and clean!"
+        self.current_thought_laundromat_id = laundromat.id
         return True
 
     def _create_ticket(self, laundromat: 'Laundromat', type: TicketType, desc: str, week: int):

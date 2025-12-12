@@ -51,9 +51,9 @@ const MachineWidget: React.FC<MachineWidgetProps> = ({ laundromat, onUpgrade }) 
                 </div>
                 <div className="flex items-center gap-2 mb-4 text-sm text-slate-400">
                   <span>Current Capacity:</span>
-                  <span className="font-bold text-purple-400">{laundromat.machines} machines</span>
+                  <span className="font-bold text-purple-400">{Array.isArray(laundromat.machines) ? laundromat.machines.length : laundromat.machines} machines</span>
                 </div>
-                <button 
+                <button
                   onClick={() => onUpgrade('machine')}
                   disabled={laundromat.balance < 500}
                   className="w-full py-3 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-purple-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-98 border border-purple-400/20"

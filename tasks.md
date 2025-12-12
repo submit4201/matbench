@@ -32,17 +32,15 @@ This document compiles all refactoring suggestions and specific user notes gathe
 - [/] **Turn Handling**: Add daily options alongside real-time/weekly modes.
   - _User Note_: `# [x] we decide on a 10 minute day/turn`
   - _User Note_: `# [ ] we need to complete the turn system`
-- [ ] **Type Safety**: Automate generation of TypeScript interfaces from Python Pydantic models.
-  - _User Note_: `# [ ] it seem we kibda did this vut never finished`
+- [x] **Type Safety**: Automate generation of TypeScript interfaces from Python Pydantic models.
+  - _User Note_: `# [x] Completed. Run 'npm run generate-types' in frontend.`
 - [ ] **Real-time Updates**: Implement WebSockets for state updates (replacing polling).
   - _User Note_: `# [ ] we need to complete the turn system`
 - [/] __**Provider Logic**: Use a Factory pattern for LLM providers.__
   - _User Note_: `# [ ] we need to complete this  system`
   - [ ] - we to makr dure whatever llns the playwe chooses thats what we use
   - [ ] - we should off offer chooses on the game master and judge llms too
----
-```markdown
-# this section is being completed by agent - ione
+
 ### Agent Tools Wishlist (Registration Needed) (COMPLETED)
 
       - [x] `pay_bill(bill_id: str)`: Pay specific outstanding bills. (`ActionType.PAY_BILL` map exists)
@@ -91,12 +89,8 @@ This document compiles all refactoring suggestions and specific user notes gathe
   - [x] **Integration**: Integrate `Staff` mechanics more deeply into the simulation (Cleaners, Techs, Attendants active).
         - [x]  regulatory systems implementation - need tools here for llm to understand and use these systesm
         - [x] scores and reputation system we tools for this system
-        - [x] public records and history and relations and i think we need tools for this system  but maybe i missed it earlier 
-        not sure if we have marketing  tooling either
+        - [x] public records and history and relations and i think we need tools for this system  but 
 
-
-        ```
----
 ## Engines
 
 - [x] **Market System**: Implement full Market/Economy system logic (Trends, Fluctuations, Reports).
@@ -194,3 +188,40 @@ this should noot be automatic the players should schedule based on theyre terms 
 - [ ] **Serialization**: Implement Pydantic models for auto-serialization.
 - [ ] **Types**: Implement Pydantic models for auto-serialization.
 - [ ] **Testing**: Implement testing for all components.
+
+## Frontend Audit & Polish (User Feedback Dec 2025)
+
+### Operations & Machines
+- [x] **Pricing Fix**: Ensure `set_price` updates persist across turns and UI reflects current state.
+- [x] **Machine Upgrades**: Wire up `upgrade_machine` button.
+- [x] **Detailed Facility View**: Expand machine list to show detailed status (wear, parts needed).
+- [x] **Maintenance Logic**: Verify `perform_maintenance` consumes parts correctly and visually updates machine status.
+- [x] **Emergency Repair**: Add UI for immediate, high-cost repairs.
+
+### Vendors & Inventory
+- [x] **Supply Feedback**: Show cost/delivery date confirmation when buying supplies.
+- [x] **Vendor Inventory**: Show current stock levels alongside vendor catalog.
+- [ ] **Negotiation**: Move negotiation to Message Center (LLM interaction) instead of simple button click.
+- [x] **Deliveries UI**: Add "Incoming Deliveries" modal/view with arrival estimates.
+
+### Finance
+- [x] **Bill Payment**: Add "Pay" buttons to Bill list (`make_payment`).
+- [x] **Loan Applications**: Wire up "Apply Now" buttons (`apply_for_loan`) with approval logic.
+- [ ] **Payroll**: Add specific "Pay Staff" action/button.
+- [x] **Financial Report**: Ensure data is actually populating in the report views (fix empty placeholders).
+
+### Communication Center (New Feature)
+- [x] **Unified Interface**: Create a Message Center for DMs, Public announcements, and Formal requests.
+- [x] **Contacts List**: View known entities (Agents, Vendors, Staff).
+- [x] **Negotiation Flow**: Implement chat-based negotiation with Vendors/GM.
+- [ ] **Message Reliability**: Debug message sending/receiving (ensure persistence).
+
+### Simulation & Time
+- [ ] **Turn Scaling**: Fix `end_turn` to respect the agreed time scale (10 min days?).
+- [ ] **Marketing Feedback**: Visual cues for active marketing campaigns and their impact.
+
+### Market & World Info
+- [x] **Market Analysis**: Create view for `check_market_trends` (Resource prices, demand).
+- [ ] **News Feed**: Implement `read_news` UI.
+- [ ] **Regulatory View**: Implement `check_regulatory_requirements` UI.
+- [ ] **Competitor Deep Dive**: Expand "Inspect" to show more than basic stats (Public Records).

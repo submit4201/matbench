@@ -1,9 +1,9 @@
-import { Calendar, Sun, Cloud, Snowflake, Leaf } from 'lucide-react';
+import { Calendar, Sun, Cloud, Snowflake, Leaf, DollarSign } from 'lucide-react';
 import { useGameStore } from '../../stores/gameStore';
 
 // ═══════════════════════════════════════════════════════════════════════
 // GameClock Component
-// Week/Day display with season indicator
+// Week/Day display with season indicator, calendar button, and balance
 // ═══════════════════════════════════════════════════════════════════════
 
 const seasonIcons: Record<string, React.ReactNode> = {
@@ -23,7 +23,8 @@ const seasonColors: Record<string, string> = {
 };
 
 export default function GameClock() {
-  const { gameState } = useGameStore();
+  const { gameState, getPlayerLaundromat, setActiveTab } = useGameStore();
+  const laundromat = getPlayerLaundromat();
 
   if (!gameState) return null;
 
@@ -32,23 +33,44 @@ export default function GameClock() {
   const icon = seasonIcons[seasonLower] ?? <Calendar className="w-4 h-4 text-slate-400" />;
   const colorClass = seasonColors[seasonLower] ?? 'from-slate-500/20 to-slate-600/20 border-slate-500/30';
 
+  const balance = laundromat?.balance ?? 0;
+
   return (
-    <div
-      className={`inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r ${colorClass} border backdrop-blur-sm`}
-    >
-      <div className="flex items-center gap-2">
-        <Calendar className="w-4 h-4 text-slate-400" />
-        <span className="text-sm font-medium text-white">Week {week}</span>
-        <span className="text-xs text-slate-400">|</span>
-        <span className="text-sm font-medium text-emerald-400">{gameState.day ?? 'Monday'}</span>
+    <div className="flex items-center gap-3">
+      {/* Money on Hand */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+        <DollarSign className="w-4 h-4 text-emerald-400" />
+        <span className="text-sm font-bold text-emerald-400">
+          ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
       </div>
-      <div className="w-px h-4 bg-white/20" />
-      <div className="flex items-center gap-1.5">
-        {icon}
-        <span className="text-sm text-slate-300 capitalize">{season || 'Spring'}</span>
+
+      {/* Date/Season Display */}
+      <div
+        className={`inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r ${colorClass} border backdrop-blur-sm`}
+      >
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-400" />
+          <span className="text-sm font-medium text-white">Week {week}</span>
+          <span className="text-xs text-slate-400">|</span>
+          <span className="text-sm font-medium text-emerald-400">{gameState.day ?? 'Monday'}</span>
+        </div>
+        <div className="w-px h-4 bg-white/20" />
+        <div className="flex items-center gap-1.5">
+          {icon}
+          <span className="text-sm text-slate-300 capitalize">{season || 'Spring'}</span>
+        </div>
       </div>
-      <div className="w-px h-4 bg-white/20" />
-      <span className="text-xs text-slate-400 uppercase tracking-widest">{gameState.phase ?? 'Operations'}</span>
+
+      {/* Calendar Button */}
+      <button
+        onClick={() => setActiveTab('calendar')}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 transition-colors"
+        title="View Calendar / History"
+      >
+        <Calendar className="w-4 h-4 text-slate-300" />
+        <span className="text-sm text-slate-300 hidden sm:inline">Calendar</span>
+      </button>
     </div>
   );
 }

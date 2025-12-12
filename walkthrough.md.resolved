@@ -1,0 +1,28 @@
+# Walkthrough - Event Models Phase 2
+
+## Changes
+Refined and expanded event models in `src/models/events/` based on user feedback and CSV requirements.
+
+### New Files
+- **`commerce.py`**: Supply Chain, Vendor, and Business events.
+- **`finance.py`**: Transactions, Bills, Taxes, Loans, Real Estate.
+- **`social.py`**: Legal, Scandals, Dilemmas, Relationships, Alliances, Communication.
+- **`operations.py`**: Machines, Staff, Customers, Tickets, R&D, Marketing.
+- **`world.py`**: Time, Weather, Market Trends.
+
+### Deleted Files
+- `hr.py` (Merged into `operations.py`)
+- `simulation.py` (Split into `world.py` and `operations.py`)
+
+## Verification Results
+
+### Automated Tests
+Ran `pytest .test/src/models/events/test_events.py`.
+- **Result**: PASSED
+- **Coverage**: Verified instantiation of representative events from all 5 domains (`OrderPlaced`, `FundsTransferred`, `ScandalStarted`, `StaffHired`, `TimeAdvanced`).
+
+### Design Compliance
+- **Immutability**: All events inherit from `GameEvent` which is frozen.
+- **Granularity**: Staff events exploded to `Hired`, `Fired`, `Quits`, `Trained`.
+- **Environment**: World events separated from player operations.
+- **Completeness**: Mapped all CSV events to Pydantic models.

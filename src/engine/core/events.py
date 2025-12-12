@@ -116,6 +116,14 @@ class EventManager:
         self.active_events = [e for e in self.active_events if e.duration > 0]
         for e in self.active_events:
             e.duration -= 1
+            
+    def update_events(self, week: int):
+        """
+        Updates event durations and expires old ones.
+        'week' arg kept for compatibility with call site, 
+        though process_events doesn't strictly need it yet.
+        """
+        self.process_events()
 
     def get_active_effects(self, agent_id: str) -> Dict[str, float]:
         effects = {
@@ -135,6 +143,10 @@ class EventManager:
                     
         return effects
     
+    def get_active_events(self, agent_id: str) -> List[GameEvent]:
+        """Returns list of events active for this agent (or global)."""
+        return [e for e in self.active_events if e.target_agent_id is None or e.target_agent_id == agent_id]
+
     def _enhance_event_description(
         self,
         event_type: str,

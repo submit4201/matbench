@@ -23,14 +23,20 @@ class Vendor:
         self.last_delivery_status = "On Time"
         self.active_effects: Dict[str, float] = {} # From supply chain events
         self.messages: List[Dict] = [] # Store messages for agents
+        # Negotiation history: agent_id -> list of {role, message, offered_price, accepted, timestamp}
+        self.negotiation_history: Dict[str, List[Dict]] = {}
+
     
     def get_market_status(self) -> Dict:
         """Return current market status for this vendor including prices and special offers."""
         return {
-            "vendor_id": self.profile.id,
-            "vendor_name": self.profile.name,
+            "id": self.profile.id,
+            "name": self.profile.name,
             "tier": self.tier.name,
-            "current_prices": {item: self.get_price(item) for item in self.profile.base_prices},
+            "slogan": self.profile.slogan,
+            "description": self.profile.description,
+            "prices": {item: self.get_price(item) for item in self.profile.base_prices},
+            "base_prices": self.profile.base_prices,
             "price_multipliers": self.current_multipliers.copy(),
             "special_offer": {
                 "item": self.special_offer.item_name,
@@ -38,7 +44,9 @@ class Vendor:
                 "description": self.special_offer.description
             } if self.special_offer else None,
             "reliability": self.profile.reliability,
+            "sustainability": self.profile.sustainability,
             "delivery_days": self.profile.delivery_days,
+            "risks": self.profile.risks,
             "last_delivery_status": self.last_delivery_status,
             "active_effects": self.active_effects.copy()
         }
