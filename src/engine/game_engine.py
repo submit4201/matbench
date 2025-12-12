@@ -482,6 +482,21 @@ class GameEngine:
         """
         action_type = action.get("type")
         week = self.time_system.current_week
+        
+        # Build Context (Service/System Dependencies)
+        context = {
+            "vendor_manager": self.vendor_manager,
+            "financial_system": self.financial_system,
+            "communication": self.communication,
+            "real_estate_manager": getattr(self, "real_estate_manager", None),
+            "ethical_event_manager": getattr(self, "ethical_event_manager", None),
+            "trust_system": getattr(self, "trust_system", None),
+            "merger_system": getattr(self, "merger_system", None),
+            "economy_system": self.economy_system,
+            # Add self for rare edge cases or read-only access if needed? 
+            # Ideally avoid passing 'engine', but for 'get_state' calls in logic it might be needed.
+            "engine": self 
+        }
 
         # 1. Lookup Handler
         handler = ActionRegistry.get_handler(action_type)
@@ -491,7 +506,7 @@ class GameEngine:
             
         # 2. Execute Handler (Pure Logic)
         try:
-            events = handler(state, action, week)
+            events = handler(state, action, week, context)
         except Exception as e:
             self.logger.error(f"Action Handler Failed [{action_type}]: {e}")
             # If handler fails, maybe try legacy? No, that's dangerous.
@@ -505,284 +520,19 @@ class GameEngine:
         
         # 4. Update State (Rebuild or Apply)
         for event in events:
-            StateBuilder._apply_event(state, event)
+            StateBuilder.apply_event(state, event)
             
         return True
 
     def _apply_legacy_action(self, state: LaundromatState, action: Dict[str, Any]):
-        """Applies a single action to the state (Legacy Monolith)."""
-        action_type = action.get("type")
-        
-        if action_type == "SET_PRICE":
-            state.price = float(action.get("amount", state.price))
-        elif action_type == "BUY_INVENTORY":
-            item = action.get("item")
-            qty = int(action.get("quantity", 0))
-            vendor_id = action.get("vendor_id", "bulkwash")
-            
-            vendor = self.vendor_manager.get_vendor(vendor_id)
-            if not vendor: vendor = self.vendor_manager.get_vendor("bulkwash")
-            
-            # Use agent-specific price (includes negotiated discounts)
-            unit_price = vendor.get_price(item, agent_id=state.id)
-            cost = qty * unit_price
-            
-            if state.balance >= cost:
-                # state.balance -= cost # Replaced by Ledger
-                state.ledger.add(-cost, "expense", f"Bought {qty} {item} from {vendor.profile.name}", self.time_system.current_week, related_entity_id=vendor_id)
-                
-                # Process order in vendor to update relationship
-                result = vendor.process_order(
-                    {item: qty}, 
-                    self.time_system.current_week, 
-                    self.vendor_manager.supply_chain, 
-                    agent_id=state.id
-                )
-                
-                # Determine arrival time
-                # If delivery_days <= 2, it arrives same week (instant for gameplay flow)
-                # Otherwise it arrives next week (or later)
-                delivery_days = vendor.profile.delivery_days
-                arrival_offset = 0
-                if delivery_days > 2:
-                    arrival_offset = 1 + (delivery_days - 3) // 7
-                
-                arrival_week = self.time_system.current_week + arrival_offset
-                
-                # Apply inventory update based on result (handling partial shipments)
-                actual_qty = int(qty * result.get("quantity_multiplier", 1.0))
-                
-                if arrival_week <= self.time_system.current_week:
-                    state.inventory[item] = state.inventory.get(item, 0) + actual_qty
-                else:
-                    state.pending_deliveries.append({
-                        "item": item,
-                        "quantity": actual_qty,
-                        "arrival_week": arrival_week,
-                        "vendor_name": vendor.profile.name
-                    })
-                    logger.info(f"Agent {state.id} ordered {actual_qty} {item} from {vendor.profile.name}. Arrives Week {arrival_week}.")
-                
-        elif action_type == "NEGOTIATE":
-            item = action.get("item")
-            vendor_id = action.get("vendor_id", "bulkwash")
-            vendor = self.vendor_manager.get_vendor(vendor_id)
-            if vendor:
-                # Get social score total
-                social_score = state.social_score.total_score if hasattr(state.social_score, "total_score") else state.reputation
-                result = vendor.negotiate_price(item, state.name, social_score, agent_id=state.id)
-                
-                # Send response message
-                self.communication.send_message(
-                    sender_id=vendor.profile.name, # Use vendor name as sender
-                    recipient_id=state.id,
-                    content=result["message"],
-                    week=self.time_system.current_week
-                )
-                
-                if result["success"]:
-                    logger.info(f"Agent {state.id} successfully negotiated with {vendor.profile.name} for {item}.")
-
-        elif action_type == "MARKETING":
-            amount = float(action.get("amount", 0))
-            amount = float(action.get("amount", 0))
-            if state.balance >= amount:
-                # state.balance -= amount
-                state.ledger.add(-amount, "expense", "Marketing Campaign", self.time_system.current_week)
-                boost = amount / 100.0
-                state.marketing_boost += boost
-                state.update_social_score("community_standing", boost)
-        
-        elif action_type == "RESOLVE_TICKET":
-            ticket_id = action.get("ticket_id")
-            for t in state.tickets:
-                if t.id == ticket_id and t.status.value == "open": # Check status value
-                    t.status = t.status.__class__.RESOLVED # Set to RESOLVED enum
-                    state.update_social_score("customer_satisfaction", 2.0)
-                    
-        elif action_type == "UPGRADE_MACHINE":
-            if state.balance >= 500:
-                # state.balance -= 500
-                state.ledger.add(-500.0, "expense", "Machine Upgrade", self.time_system.current_week)
-                # Add a new machine (simplified)
-                from src.world.laundromat import Machine
-                new_id = f"M{len(state.machines)}"
-                state.machines.append(Machine(id=new_id, type="standard_washer"))
-        
-        elif action_type == "SEND_MESSAGE":
-            recipient = action.get("recipient")
-            content = action.get("content")
-            if recipient:
-                self.communication.send_message(state.id, recipient, content, self.time_system.current_week)
-                
-        elif action_type == "PROPOSE_ALLIANCE":
-            target = action.get("target")
-            duration = int(action.get("duration", 4))
-            # Simplified: Auto-accept if trust is high enough (handled by TrustSystem logic)
-            self.trust_system.propose_alliance(state.id, target, AllianceType.NON_AGGRESSION, duration)
-            
-        elif action_type == "INITIATE_BUYOUT":
-            target_id = action.get("target")
-            offer = float(action.get("offer", 0))
-            target_state = self.states.get(target_id)
-            if target_state:
-                try:
-                    self.merger_system.initiate_buyout(state, target_state, offer)
-                except ValueError as e:
-                    logger.warning(f"Buyout failed: {e}")
-
-        elif action_type == "RESOLVE_DILEMMA":
-            dilemma_id = action.get("dilemma_id") # We might need to pass this, OR infer from choice_id if unique across dilemmas?
-            # Actually, `Message` attachments don't have dilemma_id... 
-            # I should store active dilemmas in the state or frontend needs to know which message triggered it.
-            # Frontend doesn't have dilemma_id in the message content easily unless I add it.
-            # I added it to content earlier in thought, but code implementation used attachments.
-            # I'll rely on `choice_id` being unique enough or pass dilemma_id in attachments too?
-            # EthicalEventManager needs dilemma_id.
-            # Let's assume the frontend passes choice_id and we find the dilemma.
-            # But duplicate choice IDs might exist across types? No, they are strings like "hire_cheap". 
-            # They ARE duplicated in templates. So I NEED dilemma_id.
-            # I will add dilemma_id to attachments metadata.
-            
-            choice_id = action.get("choice_id")
-            
-            # Find the active dilemma for this choice/agent
-            # This is inefficient, but safe for now.
-            active_dilemma = None
-            for d in self.ethical_event_manager.get_pending_dilemmas(state.id):
-                for c in d.choices:
-                    if c.id == choice_id:
-                        active_dilemma = d
-                        break
-                if active_dilemma: break
-            
-            if active_dilemma:
-                result = self.ethical_event_manager.resolve_dilemma(active_dilemma.id, choice_id, self.time_system.current_week)
-                if "error" not in result:
-                    # Apply effects
-                    state.balance += result.get("profit", 0)
-                    state.update_social_score("community_standing", result.get("social_score", 0))
-                    # Note: ethics_component is internal tracking, handled by manager history usually.
-                    
-                    # Send outcome message
-                    self.communication.send_system_message(
-                        recipient_id=state.id,
-                        content=f"Decision Outcome:\n{result.get('outcome_text')}",
-                        week=self.time_system.current_week,
-                        intent=MessageIntent.DILEMMA_OUTCOME
-                    )
-                else:
-                    logger.error(f"Failed to resolve dilemma: {result['error']}")
-
-        elif action_type == "PAY_BILL":
-            bill_id = action.get("bill_id")
-            result = self.financial_system.pay_bill(state, bill_id, self.time_system.current_week)
-            if result["success"]:
-                logger.info(f"Agent {state.id} paid bill {bill_id}. New Balance: {result['balance']}")
-            else:
-                logger.warning(f"Failed to pay bill {bill_id}: {result.get('error')}")
-
-        elif action_type == "BUY_BUILDING":
-            listing_id = action.get("listing_id")
-            # Verify listing exists
-            listing = self.real_estate_manager.get_listing(listing_id)
-            if listing:
-                if state.balance >= listing.price:
-                     # Process Transaction
-                     state.ledger.add(-listing.price, "real_estate", f"Purchased {listing.name}", self.time_system.current_week)
-                     
-                     # Transfer Ownership
-                     building = self.real_estate_manager.process_purchase(listing_id)
-                     if building:
-                         state.buildings.append(building)
-                         state.locations.append(building.id)
-                         logger.info(f"Agent {state.id} purchased building {building.name} for ${building.price}")
-                         self.communication.send_system_message(state.id, f"Congratulations! You now own {building.name}.", self.time_system.current_week)
-                     else:
-                         logger.error(f"Race condition? Building {listing_id} not found after check.")
-                else:
-                    logger.warning(f"Agent {state.id} insufficient funds for building {listing.price}")
-            else:
-                logger.warning(f"Building listing {listing_id} not found/expired.")
-
-
-
-        # --- New Actions ---
-
-        elif action_type == "HIRE_STAFF":
-            role = action.get("role", "attendant")
-            # 1. Calculate Hiring Cost if any
-            hiring_fee = 100.0 # Recruitment fee
-            if state.balance >= hiring_fee:
-                state.ledger.add(-hiring_fee, "expense", f"Hiring Fee ({role})", self.time_system.current_week)
-                
-                # 2. Create Staff Member
-                from src.models.world import StaffMember
-                new_id = f"S{len(state.staff) + 1}_{self.time_system.current_week}"
-                new_staff = StaffMember(
-                    id=new_id, 
-                    name=f"Staff {new_id}", 
-                    role=role, 
-                    skill_level=0.5, 
-                    wage=15.0 if role == "attendant" else 20.0
-                )
-                state.staff.append(new_staff)
-                logger.info(f"Agent {state.id} hired {role} {new_id}")
-                self.communication.send_system_message(
-                    state.id, 
-                    f"Hired new {role}. Wage: ${new_staff.wage}/hr.", 
-                    self.time_system.current_week
-                )
-            else:
-                 self.communication.send_system_message(state.id, "Insufficient funds to hire staff.", self.time_system.current_week)
-
-        elif action_type == "FIRE_STAFF":
-            staff_id = action.get("staff_id")
-            # Find and remove
-            staff_to_fire = next((s for s in state.staff if s.id == staff_id), None)
-            if staff_to_fire:
-                state.staff.remove(staff_to_fire)
-                # Severance?
-                severance = staff_to_fire.wage * 20 # 1 week pay
-                state.ledger.add(-severance, "expense", f"Severance ({staff_to_fire.id})", self.time_system.current_week)
-                logger.info(f"Agent {state.id} fired {staff_id}")
-                self.communication.send_system_message(state.id, f"Fired {staff_to_fire.name}. Paid ${severance} severance.", self.time_system.current_week)
-            else:
-                logger.warning(f"Agent {state.id} tried to fire non-existent staff {staff_id}")
-
-        elif action_type == "TRAIN_STAFF":
-            staff_id = action.get("staff_id")
-            staff = next((s for s in state.staff if s.id == staff_id), None)
-            cost = 150.0
-            if staff and state.balance >= cost:
-                state.ledger.add(-cost, "expense", f"Training ({staff_id})", self.time_system.current_week)
-                staff.skill_level = min(1.0, staff.skill_level + 0.1)
-                staff.morale = min(1.0, staff.morale + 0.1)
-                self.communication.send_system_message(state.id, f"Trained {staff.name}. Skill: {staff.skill_level:.1f}", self.time_system.current_week)
-            elif not staff:
-                logger.warning(f"Agent {state.id} tried to train non-existent staff {staff_id}")
-
-        elif action_type == "PERFORM_MAINTENANCE":
-            parts_needed = len(state.machines) // 5
-            parts_in_stock = state.inventory.get("parts", 0)
-            
-            if parts_in_stock >= parts_needed:
-                # Deduct
-                state.inventory["parts"] -= parts_needed
-                # Effect: Improve condition of all machines
-                for m in state.machines:
-                    m.condition = min(1.0, m.condition + 0.2)
-                    if m.is_broken and m.condition > 0.5:
-                         m.is_broken = False # Fix if condition improves enough
-                
-                self.communication.send_system_message(state.id, f"Maintenance performed. Used {parts_needed} parts. All machines condition improved.", self.time_system.current_week)
-            else:
-                self.communication.send_system_message(state.id, f"Not enough parts for full maintenance. Need {parts_needed}, have {parts_in_stock}.", self.time_system.current_week)
-
-        # Re-map legacy Negotiate if needed, or implement fresh
-        elif action_type == "NEGOTIATE_CONTRACT":
-             # Use existing negotiate logic logic but mapped here
-             item = action.get("item", "soap")
+        """
+        Legacy fallback - DEPRECATED.
+        All actions should now be migrated to ActionRegistry.
+        This method is left as a stub to prevent crashes if old actions linger,
+        but it logs a warning.
+        """
+        self.logger.warning(f"Legacy action '{action.get('type')}' received but not handled by Registry. Ignoring.")
+        return False
              vendor_id = action.get("vendor_id", "bulkwash")
              # ... Call inner logic akin to existing 'NEGOTIATE' handling or redirect
              # Let's simple redirect to the 'NEGOTIATE' block existing above?

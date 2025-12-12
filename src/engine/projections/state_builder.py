@@ -1,11 +1,14 @@
 from typing import List
 from src.models.world import LaundromatState
-from src.models.hierarchy import AgentState, LocationState, Machine, StaffMember
 from src.models.events.core import GameEvent
+from src.engine.projections.registry import EventRegistry
+
+# Import handlers to ensure they are registered
+import src.engine.projections.handlers
 
 class StateBuilder:
     """
-    Reconstructs LaundromatState from an event stream.
+    Reconstructs LaundromatState from an event stream using the Event Registry.
     """
     
     @staticmethod
@@ -13,108 +16,14 @@ class StateBuilder:
         # Start with empty state
         state = LaundromatState(id=agent_id, name="Loading...")
         
-        # In a real system, we might load a snapshot first.
-        # Here we just replay everything.
-        
         for event in events:
-            StateBuilder._apply_event(state, event)
+            EventRegistry.apply(state, event)
             
         return state
 
     @staticmethod
-    def _apply_event(state: LaundromatState, event: GameEvent):
+    def apply_event(state: LaundromatState, event: GameEvent):
         """
-        Reducer function: State + Event = New State
+        Public API to apply a single event to a state (Incremental projection).
         """
-        payload = event.payload
-        type = event.type
-        
-        if type == "AGENT_CREATED":
-            state.name = getattr(event, "name", payload.get("name", state.name))
-            state.agent.name = getattr(event, "name", payload.get("name", state.agent.name))
-            
-        elif type == "TRANSACTION_RECORDED" or type == "FUNDS_TRANSFERRED":
-            # Support both generic payload and FundsTransferred model
-            amount = getattr(event, "amount", payload.get("amount", 0))
-            category = getattr(event, "category", payload.get("category", "misc"))
-            desc = getattr(event, "description", payload.get("description", ""))
-            state.agent.ledger.add(amount, category, desc, event.week)
-            
-        elif type == "STAFF_HIRED":
-            new_staff = StaffMember(
-                id=getattr(event, "staff_id", payload.get("id")),
-                name=getattr(event, "name", payload.get("name", "Unknown")),
-                role=getattr(event, "role", payload.get("role")),
-                skill_level=getattr(event, "skill_level", payload.get("skill_level", 0.5)),
-                wage=getattr(event, "wage", payload.get("wage", 0.0))
-            )
-            state.primary_location.staff.append(new_staff)
-            
-        elif type == "STAFF_FIRED":
-            staff_id = getattr(event, "staff_id", payload.get("staff_id"))
-            state.primary_location.staff = [
-                s for s in state.primary_location.staff if s.id != staff_id
-            ]
-            
-        elif type == "MACHINE_PURCHASED":
-             new_machine = Machine(
-                 id=getattr(event, "machine_id", payload.get("id")),
-                 type=getattr(event, "model_type", payload.get("type", "standard_washer")),
-                 condition=getattr(event, "condition", payload.get("condition", 1.0))
-             )
-             state.primary_location.machines.append(new_machine)
-             
-        elif type == "INVENTORY_STOCKED" or type == "INVENTORY_UPDATED":
-            item = getattr(event, "item_type", payload.get("item"))
-            qty = getattr(event, "quantity", payload.get("quantity", 0))
-            current = state.primary_location.inventory.get(item, 0)
-            state.primary_location.inventory[item] = max(0, current + qty)
-            
-        elif type == "PRICE_SET":
-            # Support PriceSetEvent (new_price) and legacy payload (price)
-            val = getattr(event, "new_price", payload.get("price"))
-            if val is not None:
-                state.primary_location.price = val
-            
-        elif type == "REPUTATION_UPDATED" or type == "REPUTATION_CHANGED":
-            delta = getattr(event, "delta", payload.get("delta", 0))
-            current_rep = state.agent.social_score.community_standing
-            state.agent.social_score.community_standing = max(0, min(100, current_rep + delta))
-            
-        elif type == "MARKETING_CAMPAIGN_STARTED":
-            boost = getattr(event, "boost_amount", payload.get("boost_amount", 0.0))
-            state.primary_location.marketing_boost += boost
-            
-        elif type == "TICKET_RESOLVED":
-            pass # Ticket status tracking needs detailed model updates, pending for now.
-
-        elif type == "BILL_PAID":
-            # Just ledger effect handled by FundsTransferred usually?
-            # Or we need to mark a bill as paid in state?
-            # If state has a list of open bills, we remove it.
-            # Assuming state.agent.ledger tracks liabilities or we have a bill list.
-            # Legacy had state.financial_system internal tracking.
-            # For pure state projection, we might not have the bill list unless generated by events.
-            pass
-            
-        elif type == "BUILDING_PURCHASED":
-            # Add to locations/assets
-            from src.models.hierarchy import Building, LocationState
-            b_id = getattr(event, "building_id", payload.get("building_id"))
-            price = getattr(event, "price", payload.get("price", 0))
-            
-            # Create a new location/building representation
-            # Legacy: state.buildings.append(building)
-            # New: Primary Location or new LocationState?
-            # Let's assume it adds to a list of buildings in the primary location or new location.
-            # For now, we'll append to primary_location.buildings if it exists (schema update needed?)
-            # Validating against `LocationState` definition... it likely has a buildings list.
-            if hasattr(state.primary_location, "buildings"):
-                state.primary_location.buildings.append(Building(
-                    id=b_id,
-                    name=f"Building {b_id}",
-                    type="storefront",
-                    condition=1.0,
-                    capacity_machines=20,
-                    location_multiplier=getattr(event, "location_multiplier", 1.0)
-                ))
+        EventRegistry.apply(state, event)

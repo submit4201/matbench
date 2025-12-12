@@ -2,7 +2,7 @@ from typing import Callable, List, Dict, Any
 from src.models.world import LaundromatState
 from src.models.events.core import GameEvent
 
-ActionHandler = Callable[[LaundromatState, Dict[str, Any], int], List[GameEvent]]
+ActionHandler = Callable[[LaundromatState, Dict[str, Any], int, Dict[str, Any]], List[GameEvent]]
 
 class ActionRegistry:
     _handlers: Dict[str, ActionHandler] = {}
