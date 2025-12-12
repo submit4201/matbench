@@ -114,9 +114,9 @@ def apply_daily_revenue(state: LaundromatState, event: GameEvent):
     update_stream("Standard Wash", rev_wash)
     update_stream("Standard Dry", rev_dry)
     soap_stream = update_stream("Detergent Sale", rev_soap)
-    sheets_stream = update_stream("Dryer Sheets", rev_sheets)
+    update_stream("Dryer Sheets", rev_sheets)
     
-    # 3. Update Active Customers
+    # 3. Update Active Customers (daily count - represents most recent day's customer count)
     state.active_customers = cust_count
     
     # 4. Infer Inventory Usage from Revenue (Deterministic projection)
@@ -128,7 +128,10 @@ def apply_daily_revenue(state: LaundromatState, event: GameEvent):
     # 5. Track Physics Costs (Accrue for Weekly Report)
     # Ensure weekly_spending dict exists (it was added to LocationState)
     if not hasattr(state.primary_location, "weekly_spending"):
-        state.primary_location.weekly_spending = {}
+        state.primary_location.weekly_spending = {
+            "utility": 0.0,
+            "supplies": 0.0,
+        }
     
     current_util = state.primary_location.weekly_spending.get("utility", 0.0)
     state.primary_location.weekly_spending["utility"] = current_util + util_cost
@@ -150,7 +153,7 @@ def apply_weekly_report_generated(state: LaundromatState, event: GameEvent):
     def get_val(name, default=0.0):
         return getattr(event, name, payload.get(name, default))
     
-    # 1. Update active customers
+    # 1. Update active customers (weekly estimate - represents weekly average customer count)
     state.active_customers = int(get_val("active_customers", 0))
     
     # 2. Deduct parts from inventory

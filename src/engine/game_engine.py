@@ -19,11 +19,19 @@ from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
 from src.models.events.finance import DailyRevenueProcessed, BillGenerated, WeeklySpendingReset, WeeklyReportGenerated
 from src.models.events.operations import MachineWearUpdated, MarketingBoostDecayed, CleanlinessUpdated
-from src.models.events.social import ReputationChanged, ScandalStarted
+from src.models.events.social import ReputationChanged
 from src.models.events.commerce import ShipmentReceived
 import copy
 # Load handlers modules to register them
 import src.engine.actions.handlers 
+
+# Utility cost constants per load
+STANDARD_WATER_COST_PER_LOAD = 0.15
+STANDARD_ELECTRICITY_COST_PER_LOAD = 0.20
+ECO_WATER_COST_PER_LOAD = 0.08
+ECO_ELECTRICITY_COST_PER_LOAD = 0.12
+DRYER_GAS_COST_PER_LOAD = 0.10
+DRYER_ELECTRICITY_COST_PER_LOAD = 0.25
 
 class GameEngine:
     """
@@ -215,6 +223,7 @@ class GameEngine:
         daily_vending = 0.0
         daily_soap_rev = 0.0
         daily_sheets_rev = 0.0
+        soap_sold = 0  # Ensure soap_sold is always defined
         
         customers_needing_soap = int(customer_count * 0.5)
         
@@ -241,11 +250,6 @@ class GameEngine:
         # Loads fill machines.
         loads_to_process = customer_count
         
-        # Machine Configs (Constants for now, could be on Machine model)
-        # Standard: Water 0.15, Elec 0.20
-        # Eco: Water 0.08, Elec 0.12
-        # Industrial: Water 0.25, Elec 0.40
-        
         for machine in state.machines:
             if loads_to_process <= 0:
                 break
@@ -258,18 +262,18 @@ class GameEngine:
             loads_to_process -= loads
             
             # Rate Calculation
-            w_cost = 0.15
-            e_cost = 0.20
+            water_cost_per_load = STANDARD_WATER_COST_PER_LOAD
+            electricity_cost_per_load = STANDARD_ELECTRICITY_COST_PER_LOAD
             if "eco" in machine.type:
-                 w_cost = 0.08
-                 e_cost = 0.12
+                water_cost_per_load = ECO_WATER_COST_PER_LOAD
+                electricity_cost_per_load = ECO_ELECTRICITY_COST_PER_LOAD
             
-            daily_utility_cost += loads * (w_cost + e_cost)
+            daily_utility_cost += loads * (water_cost_per_load + electricity_cost_per_load)
             
         # Dryer Utility (Gas/Elec) - Link to wash loads?
         # Assume 1 dryer load per wash load roughly
         dryer_loads = customer_count 
-        daily_utility_cost += dryer_loads * (0.10 + 0.25) # Gas + Elec
+        daily_utility_cost += dryer_loads * (DRYER_GAS_COST_PER_LOAD + DRYER_ELECTRICITY_COST_PER_LOAD)
         
         # Supply Cost Calculation (COGS)
         daily_supply_cost = 0.0
@@ -529,11 +533,7 @@ class GameEngine:
                 # Financial System Orchestration (uses data from event)
                 # Note: We need to reconstruct FinancialReport for FinancialSystem here
                 # until FinancialSystem is also refactored to use events
-                financial_report = FinancialReport(week=self.time_system.current_week)
-                financial_report.total_revenue = report_event.total_revenue
-                financial_report.expense_rent = report_event.expense_rent
-                financial_report.expense_utilities = report_event.expense_utilities
-                financial_report.expense_labor = report_event.expense_labor
+                financial_report = self._financial_report_from_event(report_event)
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
                 
                 results[agent_id] = {
@@ -706,6 +706,8 @@ class GameEngine:
         expense_insurance = 37.5
         expense_other = 25.0
         
+        # Note: No state mutation occurs here. This function returns an event describing the financials;
+        # the actual ledger update happens in the event handler, not in this processing function.
         total_operating_expenses = (expense_rent + expense_utilities + expense_labor + 
                                    expense_maintenance + expense_insurance + expense_other)
         
@@ -763,3 +765,37 @@ class GameEngine:
             active_customers=int(customer_count),
             parts_used=parts_used
         )
+    
+    def _financial_report_from_event(self, event: WeeklyReportGenerated) -> FinancialReport:
+        """
+        Helper method to convert WeeklyReportGenerated event to FinancialReport.
+        This reduces code duplication and error potential during the transition
+        until FinancialSystem is refactored to use events.
+        """
+        report = FinancialReport(week=self.time_system.current_week)
+        report.total_revenue = event.total_revenue
+        report.revenue_wash = event.revenue_wash
+        report.revenue_dry = event.revenue_dry
+        report.revenue_vending = event.revenue_vending
+        report.revenue_premium = event.revenue_premium
+        report.revenue_membership = event.revenue_membership
+        report.revenue_other = event.revenue_other
+        report.cogs_supplies = event.cogs_supplies
+        report.cogs_vending = event.cogs_vending
+        report.total_cogs = event.total_cogs
+        report.gross_profit = event.gross_profit
+        report.expense_rent = event.expense_rent
+        report.expense_utilities = event.expense_utilities
+        report.expense_labor = event.expense_labor
+        report.expense_maintenance = event.expense_maintenance
+        report.expense_insurance = event.expense_insurance
+        report.expense_other = event.expense_other
+        report.total_operating_expenses = event.total_operating_expenses
+        report.operating_income = event.operating_income
+        report.expense_interest = event.expense_interest
+        report.net_income_before_tax = event.net_income_before_tax
+        report.tax_provision = event.tax_provision
+        report.net_income = event.net_income
+        report.cash_beginning = event.cash_beginning
+        report.cash_ending = event.cash_ending
+        return report

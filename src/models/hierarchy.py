@@ -60,6 +60,15 @@ class AgentState(GameModel):
     unlocked_research: List[str] = Field(default_factory=list)
     perks: List[str] = Field(default_factory=list)
     
+    # Social & Relationships
+    active_scandals: List[Dict[str, Any]] = Field(default_factory=list)
+    trust_scores: Dict[str, float] = Field(default_factory=dict)
+    alliances: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    # Vendor Relationships
+    vendor_discounts: Dict[str, float] = Field(default_factory=dict)
+    vendor_relationships: Dict[str, float] = Field(default_factory=dict)
+    
     # Data Tracking
     history: Dict[str, List[float]] = Field(default_factory=lambda: {
         "balance": [],
