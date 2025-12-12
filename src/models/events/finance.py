@@ -17,6 +17,8 @@ class DailyRevenueProcessed(GameEvent):
     revenue_soap: float = Field(default=0.0, ge=0)
     revenue_sheets: float = Field(default=0.0, ge=0)
     customer_count: int = Field(ge=0)
+    utility_cost: float = Field(default=0.0, ge=0)
+    supply_cost: float = Field(default=0.0, ge=0)
 
 class FundsTransferred(GameEvent):
     """The atom of the financial system."""

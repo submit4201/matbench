@@ -18,6 +18,8 @@ from src.engine.persistence.event_repo import EventRepository
 from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
 from src.models.events.finance import DailyRevenueProcessed
+from src.models.events.operations import MachineWearUpdated, MarketingBoostDecayed
+from src.models.events.social import ReputationChanged, ScandalStarted
 import copy
 # Load handlers modules to register them
 import src.engine.actions.handlers 
@@ -231,6 +233,49 @@ class GameEngine:
             daily_sheets_rev = sheets_rev
             daily_vending += sheets_rev
         
+        # Machine Physics - Utility Calculation
+        daily_utility_cost = 0.0
+        # Distribute customers across machines to simulate usage
+        # Simple Logic: Avg loads per person = 1.0. 
+        # Loads fill machines.
+        loads_to_process = customer_count
+        
+        # Machine Configs (Constants for now, could be on Machine model)
+        # Standard: Water 0.15, Elec 0.20
+        # Eco: Water 0.08, Elec 0.12
+        # Industrial: Water 0.25, Elec 0.40
+        
+        for machine in state.machines:
+            if loads_to_process <= 0:
+                break
+            if machine.is_broken or "dryer" in machine.type: # Dryers handled separately or linked?
+                continue
+                
+            # Assume 1 load capacity per turn * 7 turns = 7 loads/day max
+            capacity = 7 
+            loads = min(loads_to_process, capacity)
+            loads_to_process -= loads
+            
+            # Rate Calculation
+            w_cost = 0.15
+            e_cost = 0.20
+            if "eco" in machine.type:
+                 w_cost = 0.08
+                 e_cost = 0.12
+            
+            daily_utility_cost += loads * (w_cost + e_cost)
+            
+        # Dryer Utility (Gas/Elec) - Link to wash loads?
+        # Assume 1 dryer load per wash load roughly
+        dryer_loads = customer_count 
+        daily_utility_cost += dryer_loads * (0.10 + 0.25) # Gas + Elec
+        
+        # Supply Cost Calculation (COGS)
+        daily_supply_cost = 0.0
+        # Detergent
+        if soap_sold > 0:
+             daily_supply_cost += soap_sold * 0.15 # Unit cost
+             
         # Create Event
         revenue_event = DailyRevenueProcessed(
             week=self.time_system.current_week,
@@ -241,7 +286,9 @@ class GameEngine:
             revenue_vending=float(daily_vending),
             revenue_soap=float(daily_soap_rev),
             revenue_sheets=float(daily_sheets_rev),
-            customer_count=int(customer_count)
+            customer_count=int(customer_count),
+            utility_cost=float(daily_utility_cost),
+            supply_cost=float(daily_supply_cost)
         )
         
         # === DAILY BILL CHECKING (Side Effect - Notifications) ===
@@ -304,8 +351,9 @@ class GameEngine:
         This is now called by process_daily_turn when the week rolls over.
         """
         results = {}
+        weekly_events = []
         
-        # 0. Update Market Trends
+        # 0. Update Market Trends (Keep existing logic or event-ize? Market system updates itself internally)
         self.economy_system.update_trends(self.time_system.current_week)
         trend = self.economy_system.active_trend
         if trend and trend.week == self.time_system.current_week:
@@ -314,7 +362,7 @@ class GameEngine:
             for agent_id in self.agent_ids:
                 self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.ANNOUNCEMENT)
 
-        # 1.5 Process Pending Deliveries
+        # 1.5 Process Pending Deliveries (Logic remains for now, could be event-ized later)
         for agent_id, state in self.states.items():
             if hasattr(state, "pending_deliveries"):
                 remaining_deliveries = []
@@ -336,153 +384,92 @@ class GameEngine:
                 state.pending_deliveries = remaining_deliveries
 
 
-
-        # 2. Simulate Week (if we are in PEAK phase or just batching weekly)
-        # For now, we assume this is called once per week after all decisions
-        
+        # 2. Simulate Week
         seasonal_mods = self.time_system.get_seasonal_modifier()
         
         for agent_id, state in self.states.items():
             try:
-                # Calculate Staff Bonuses
-                staff_effects = self._calculate_staff_effects(state)
+                # --- Marketing Decay ---
+                if state.marketing_boost > 0:
+                    decay = state.marketing_boost * 0.2 # 20% decay per week
+                    new_boost = max(0.0, state.marketing_boost - decay)
+                    # Emit Event
+                    marketing_event = MarketingBoostDecayed(
+                        week=self.time_system.current_week,
+                        agent_id=agent_id,
+                        decay_amount=decay,
+                        remaining_boost=new_boost
+                    )
+                    weekly_events.append(marketing_event)
 
-                # Apply Cleanliness (Decayed by traffic, boosted by staff)
-                # Traffic decay placeholder: -0.1 per 100 customers?
-                # For now just set base Cleanliness + Staff Boost
-                base_clean = 0.5
-                state.cleanliness = min(1.0, base_clean + staff_effects["cleanliness_boost"])
+                # --- Machine Wear (Physics) ---
+                for machine in state.machines:
+                    if not machine.is_broken:
+                        # Wear depends on type/quality
+                        base_wear = 0.02 # 2% per week default
+                        if "commercial" in machine.type:
+                            base_wear = 0.01
+                        elif "industrial" in machine.type:
+                            base_wear = 0.005
+                        
+                        # Technician Logic implied in StateBuilder (skill reduces wear)? 
+                        # Or calculate specific wear here?
+                        # Using basic wear for now.
+                        wear_event = MachineWearUpdated(
+                            week=self.time_system.current_week,
+                            agent_id=state.id,
+                            machine_id=machine.id,
+                            wear_amount=base_wear,
+                            current_condition=max(0.0, machine.condition - base_wear)
+                        )
+                        weekly_events.append(wear_event)
 
-                # Get active effects
+                # --- Social/Scandals ---
                 effects = self.event_manager.get_active_effects(agent_id)
                 
-                # Apply Social Penalties
-                if effects["customer_satisfaction_penalty"] > 0:
-                    state.update_social_score("customer_satisfaction", -effects["customer_satisfaction_penalty"])
-
-                # World Bible 2.1.1: Weekly demand ~2,400 loads
-                total_market = 2400
-                base_customers = total_market / max(1, len(self.states))
-                
-                # Calculate customer count
-                # Base share modified by reputation (baseline 50) and marketing
-                raw_demand = base_customers * (1 + state.marketing_boost) * (state.social_score.total_score / 50.0)
-                
-                # Apply Demand Multiplier (Events + Market Trend)
-                raw_demand *= effects["demand_multiplier"]
-                if trend and trend.demand_shift != 1.0:
-                     raw_demand *= trend.demand_shift
-
-                if agent_id == "p1":
-                    logger.info(f"[DEBUG] P1 Demand: Base={base_customers}, Soc={state.social_score.total_score}, Mkt={state.marketing_boost}, Eff={effects['demand_multiplier']}")
-
-                # Calculate Capacity (Supply Constraint)
-                # Realistic TPD (Turns Per Day) is 3-5 avg, 6-8 high. We use 7 as a hard physical cap for "busy" days.
-                num_washers = sum(1 for m in state.machines if "washer" in m.type and not m.is_broken)
-                max_weekly_capacity = num_washers * 7 * 7
-                
-                # Cap customers at capacity
-                customer_count = min(raw_demand, max_weekly_capacity)
-                
-                # === CUSTOMER INTERACTION SOCIAL SCORE TRIGGERS ===
-                
-                # 1. Good service bonus - Customers are generally happy when served
-                if customer_count > 50:
-                    # Small boost for each 100 customers served (representing good experiences)
-                    # Boosted by Attendants
-                    service_quality = 1.0 + staff_effects["service_boost"]
-                    service_boost = (customer_count / 200.0) * 1.5 * service_quality
-                    
-                    state.update_social_score("customer_satisfaction", service_boost)
-                    logger.info(f"Agent {agent_id}: Customer service boost +{service_boost:.1f} for {customer_count:.0f} customers (Quality: {service_quality:.2f})")
-                
-                # 1.5 Ethical Dilemmas
-                # Trigger a dilemma if conditions are met
-                dilemma_context = {
-                    "balance": state.balance,
-                    "reputation": state.reputation,
-                    "customer_count": customer_count
-                }
-                dilemma = self.ethical_event_manager.check_for_dilemmas(self.time_system.current_week, agent_id, dilemma_context)
-                if dilemma:
-                    # Notify agent via Message
-                    logger.info(f"Triggered Dilemma {dilemma.id} for {agent_id}")
-                    
-                    # Serialize choices for frontend buttons
-                    choices_data = [
-                        {
-                            "id": c.id,
-                            "label": c.label,
-                            "description": c.description,
-                            "risk": c.risk_description if c.risk_factor > 0 else None
-                        } for c in dilemma.choices
-                    ]
-                    
-                    self.communication.send_system_message(
-                        recipient_id=agent_id,
-                        content=f"{dilemma.description}",
+                # Active Scandal Persistence
+                # If there's an active scandal effect, hit reputation
+                if "scandal" in effects: # Simplified check
+                    rep_hit = -5.0
+                    scandal_event = ReputationChanged(
                         week=self.time_system.current_week,
-                        intent=MessageIntent.DILEMMA,
-                        attachments=choices_data
+                        agent_id=state.id,
+                        delta=rep_hit,
+                        reason="Active Scandal Fallout"
                     )
+                    weekly_events.append(scandal_event)
 
-                # 2. Price satisfaction - Competitive pricing boosts reputation
-                avg_market_price = sum(s.price for s in self.states.values()) / len(self.states)
-                if state.price <= avg_market_price:
-                    # Reward for competitive pricing
-                    price_boost = (avg_market_price - state.price) * 0.5  # Up to ~1-2 points
-                    if price_boost > 0.1:
-                        state.update_social_score("community_standing", min(price_boost, 2.0))
-                elif state.price > avg_market_price * 1.3:
-                    # Penalty for high prices
-                    state.update_social_score("community_standing", -1.0)
+                # --- Financial Report Generation (Safe Read) ---
+                # NOTE: _process_financials still mutates 'parts' inventory. 
+                # Ideally this should be an event "MaintenanceInventoryUsed". Keeping as legacy for now to satisfy report generation.
+                # Use current customer count from state (updated daily)
+                customer_count_est = state.active_customers * 7 # Rough est
                 
-                # 3. Out-of-stock penalty - Customers unhappy if can't buy supplies
-                detergent_stock = state.inventory.get("detergent", 0)
-                if detergent_stock < 10 and customer_count > 20:
-                    state.update_social_score("customer_satisfaction", -2.0)
-                    logger.info(f"Agent {agent_id}: Low detergent stock penalty -2.0")
+                financial_report = self._process_financials(state, seasonal_mods, customer_count_est)
                 
-                # 4. Machine quality bonus - No broken machines = better experience
-                broken_count = sum(1 for m in state.machines if m.is_broken)
-                if broken_count == 0 and len(state.machines) >= 10:
-                    # Cleanliness bonus also applied here
-                    bonus = 1.0 + (1.0 if state.cleanliness > 0.8 else 0.0)
-                    state.update_social_score("customer_satisfaction", bonus)
-                elif broken_count > len(state.machines) * 0.3:
-                    # More than 30% broken is a problem
-                    state.update_social_score("customer_satisfaction", -2.0)
-                
-                # 5. Penalty for overcrowding (Unmet demand)
-                if raw_demand > max_weekly_capacity:
-                    overcrowding_ratio = raw_demand / max_weekly_capacity
-                    if overcrowding_ratio > 1.2: # If demand is >20% over capacity
-                        # Reputation hit for long wait times
-                        state.update_social_score("customer_satisfaction", -1.5)
-                        logger.info(f"Agent {agent_id} is overcrowded! Demand: {raw_demand:.0f}, Cap: {max_weekly_capacity}. Rep -1.5.")
-                
-                # Financial Processing
-                financial_report = self._process_financials(state, seasonal_mods, customer_count)
-                
-                # Financial System Orchestration (Bills, Credit, Tax)
+                # Financial System Orchestration
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
                 
                 results[agent_id] = {
                     "revenue": round(financial_report.total_revenue, 2),
                     "expenses": round(financial_report.total_operating_expenses + financial_report.total_cogs, 2),
                     "profit": round(financial_report.net_income, 2),
-                    "customers": round(customer_count),
+                    "customers": round(state.active_customers),
                     "new_balance": round(state.balance, 2)
                 }
             except Exception as e:
                 logger.error(f"Failed to process turn for agent {agent_id}: {e}", exc_info=True)
                 results[agent_id] = {"error": str(e), "customers": 0, "revenue": 0}
         
+        # 3. Save & Apply Weekly Events
+        if weekly_events:
+            self.event_repo.save_batch(weekly_events)
+            for event in weekly_events:
+                StateBuilder.apply_event(self.states[event.agent_id], event)
+
         # 5.5 Record Metrics (Audit)
         self.metrics_auditor.record_weekly_state(self.time_system.current_week, self.states)
 
-        # 6. Advance Time - REMOVED (Controlled by Server/Loop)
-        # self.time_system.advance_week()
         logger.info(f"Processed logic for Week {self.time_system.current_week}")
         
         return results

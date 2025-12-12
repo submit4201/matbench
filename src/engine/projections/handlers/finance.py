@@ -33,11 +33,15 @@ def apply_daily_revenue(state: LaundromatState, event: GameEvent):
     rev_soap = get_val("revenue_soap")
     rev_sheets = get_val("revenue_sheets")
     cust_count = int(get_val("customer_count", 0))
+    # Physics costs
+    util_cost = get_val("utility_cost", 0.0)
+    supply_cost = get_val("supply_cost", 0.0)
+    
     day = getattr(event, "day", "?")
     
     total_rev = rev_wash + rev_dry + rev_soap + rev_sheets
     
-    # 1. Update Ledger
+    # 1. Update Ledger (Revenue Only - Costs are accrued or paid weekly)
     if total_rev > 0:
         state.agent.ledger.add(
             total_rev, 
@@ -47,7 +51,6 @@ def apply_daily_revenue(state: LaundromatState, event: GameEvent):
         )
 
     # 2. Update Revenue Streams
-    # Helper to update stream safely
     def update_stream(name, amount):
         s = state.revenue_streams.get(name)
         if s:
@@ -64,10 +67,18 @@ def apply_daily_revenue(state: LaundromatState, event: GameEvent):
     state.active_customers = cust_count
     
     # 4. Infer Inventory Usage from Revenue (Deterministic projection)
-    # Detergent
     if soap_stream and soap_stream.price > 0 and rev_soap > 0:
         qty = int(rev_soap / soap_stream.price)
         cur = state.inventory.get("detergent", 0)
         state.inventory["detergent"] = max(0, cur - qty)
         
-    # Note: Dryer sheets (inventory tracking not explicitly standardized in previous code but could match)
+    # 5. Track Physics Costs (Accrue for Weekly Report)
+    # Ensure weekly_spending dict exists (it was added to LocationState)
+    if not hasattr(state.primary_location, "weekly_spending"):
+        state.primary_location.weekly_spending = {}
+    
+    current_util = state.primary_location.weekly_spending.get("utilities", 0.0)
+    state.primary_location.weekly_spending["utilities"] = current_util + util_cost
+    
+    current_supply = state.primary_location.weekly_spending.get("supplies", 0.0)
+    state.primary_location.weekly_spending["supplies"] = current_supply + supply_cost
