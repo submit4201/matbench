@@ -80,9 +80,7 @@ def apply_scandal_started(state: LaundromatState, event: GameEvent):
     """Track active scandal affecting reputation."""
     payload = event.payload if hasattr(event, "payload") else {}
     # Store scandal info for reputation penalties
-    if not hasattr(state, "active_scandals"):
-        state.active_scandals = []
-    state.active_scandals.append({
+    state.agent.active_scandals.append({
         "type": getattr(event, "scandal_type", payload.get("scandal_type")),
         "severity": getattr(event, "severity", payload.get("severity", 0.5)),
         "expiry_week": getattr(event, "expiry_week", payload.get("expiry_week"))
@@ -94,8 +92,7 @@ def apply_scandal_resolved(state: LaundromatState, event: GameEvent):
     """Remove resolved scandal."""
     payload = event.payload if hasattr(event, "payload") else {}
     scandal_id = getattr(event, "scandal_id", payload.get("scandal_id"))
-    if hasattr(state, "active_scandals"):
-        state.active_scandals = [s for s in state.active_scandals if s.get("id") != scandal_id]
+    state.agent.active_scandals = [s for s in state.agent.active_scandals if s.get("id") != scandal_id]
 
 
 @EventRegistry.register("DILEMMA_TRIGGERED")
@@ -116,8 +113,7 @@ def apply_risk_consequence_triggered(state: LaundromatState, event: GameEvent):
     
     # Apply reputation penalty if present
     if "reputation" in penalty:
-        if hasattr(state, "reputation"):
-            state.reputation = max(0, state.reputation + penalty["reputation"])
+        state.reputation = max(0, state.reputation + penalty["reputation"])
 
 
 @EventRegistry.register("TRUST_SCORE_CHANGED")
@@ -126,8 +122,8 @@ def apply_trust_score_changed(state: LaundromatState, event: GameEvent):
     payload = event.payload if hasattr(event, "payload") else {}
     target_id = getattr(event, "target_agent_id", payload.get("target_agent_id"))
     new_score = getattr(event, "new_score", payload.get("new_score"))
-    if hasattr(state, "trust_scores") and target_id and new_score is not None:
-        state.trust_scores[target_id] = new_score
+    if target_id and new_score is not None:
+        state.agent.trust_scores[target_id] = new_score
 
 
 @EventRegistry.register("ALLIANCE_PROPOSED")
@@ -140,9 +136,7 @@ def apply_alliance_proposed(state: LaundromatState, event: GameEvent):
 def apply_alliance_formed(state: LaundromatState, event: GameEvent):
     """Add alliance to state."""
     payload = event.payload if hasattr(event, "payload") else {}
-    if not hasattr(state, "alliances"):
-        state.alliances = []
-    state.alliances.append({
+    state.agent.alliances.append({
         "id": getattr(event, "alliance_id", payload.get("alliance_id")),
         "members": getattr(event, "members", payload.get("members", [])),
         "type": getattr(event, "alliance_type", payload.get("alliance_type")),
@@ -155,8 +149,7 @@ def apply_alliance_broken(state: LaundromatState, event: GameEvent):
     """Remove broken alliance."""
     payload = event.payload if hasattr(event, "payload") else {}
     alliance_id = getattr(event, "alliance_id", payload.get("alliance_id"))
-    if hasattr(state, "alliances"):
-        state.alliances = [a for a in state.alliances if a.get("id") != alliance_id]
+    state.agent.alliances = [a for a in state.agent.alliances if a.get("id") != alliance_id]
 
 
 @EventRegistry.register("ALLIANCE_EXPIRED")
@@ -164,8 +157,7 @@ def apply_alliance_expired(state: LaundromatState, event: GameEvent):
     """Remove expired alliance."""
     payload = event.payload if hasattr(event, "payload") else {}
     alliance_id = getattr(event, "alliance_id", payload.get("alliance_id"))
-    if hasattr(state, "alliances"):
-        state.alliances = [a for a in state.alliances if a.get("id") != alliance_id]
+    state.agent.alliances = [a for a in state.agent.alliances if a.get("id") != alliance_id]
 
 
 @EventRegistry.register("MESSAGE_SENT")

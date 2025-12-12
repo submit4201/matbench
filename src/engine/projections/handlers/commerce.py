@@ -31,8 +31,8 @@ def apply_shipment_received(state: LaundromatState, event: GameEvent):
     items_received = getattr(event, "items_received", payload.get("items_received", {}))
     
     for item, qty in items_received.items():
-        current = state.inventory.get(item, 0)
-        state.inventory[item] = current + qty
+        current = state.primary_location.inventory.get(item, 0)
+        state.primary_location.inventory[item] = current + qty
 
 
 @EventRegistry.register("DELIVERY_PROCESSED")
@@ -41,11 +41,10 @@ def apply_delivery_processed(state: LaundromatState, event: GameEvent):
     payload = event.payload if hasattr(event, "payload") else {}
     delivery_id = getattr(event, "delivery_id", payload.get("delivery_id"))
     
-    if hasattr(state, "pending_deliveries"):
-        state.pending_deliveries = [
-            d for d in state.pending_deliveries 
-            if d.get("id") != delivery_id
-        ]
+    state.primary_location.pending_deliveries = [
+        d for d in state.primary_location.pending_deliveries 
+        if d.get("id") != delivery_id
+    ]
 
 
 @EventRegistry.register("DELIVERY_LIST_UPDATED")
@@ -53,7 +52,7 @@ def apply_delivery_list_updated(state: LaundromatState, event: GameEvent):
     """Update pending deliveries list after processing arrivals."""
     payload = event.payload if hasattr(event, "payload") else {}
     remaining = getattr(event, "remaining_deliveries", payload.get("remaining_deliveries", []))
-    state.pending_deliveries = remaining
+    state.primary_location.pending_deliveries = remaining
 
 
 # --- Orphan Event Handlers (Future Feature Support) ---
@@ -62,9 +61,7 @@ def apply_delivery_list_updated(state: LaundromatState, event: GameEvent):
 def apply_order_placed(state: LaundromatState, event: GameEvent):
     """Add order to pending deliveries."""
     payload = event.payload if hasattr(event, "payload") else {}
-    if not hasattr(state, "pending_deliveries"):
-        state.pending_deliveries = []
-    state.pending_deliveries.append({
+    state.primary_location.pending_deliveries.append({
         "order_id": getattr(event, "order_id", payload.get("order_id")),
         "vendor_id": getattr(event, "vendor_id", payload.get("vendor_id")),
         "items": getattr(event, "items", payload.get("items", {})),
@@ -102,8 +99,8 @@ def apply_vendor_negotiation_outcome(state: LaundromatState, event: GameEvent):
     payload = event.payload if hasattr(event, "payload") else {}
     vendor_id = getattr(event, "vendor_id", payload.get("vendor_id"))
     new_multiplier = getattr(event, "new_price_multiplier", payload.get("new_price_multiplier"))
-    if hasattr(state, "vendor_discounts") and vendor_id and new_multiplier is not None:
-        state.vendor_discounts[vendor_id] = new_multiplier
+    if vendor_id and new_multiplier is not None:
+        state.agent.vendor_discounts[vendor_id] = new_multiplier
 
 
 @EventRegistry.register("VENDOR_RELATIONSHIP_CHANGED")
@@ -112,8 +109,8 @@ def apply_vendor_relationship_changed(state: LaundromatState, event: GameEvent):
     payload = event.payload if hasattr(event, "payload") else {}
     vendor_id = getattr(event, "vendor_id", payload.get("vendor_id"))
     new_score = getattr(event, "new_score", payload.get("new_score"))
-    if hasattr(state, "vendor_relationships") and vendor_id and new_score is not None:
-        state.vendor_relationships[vendor_id] = new_score
+    if vendor_id and new_score is not None:
+        state.agent.vendor_relationships[vendor_id] = new_score
 
 
 @EventRegistry.register("NEGOTIATION_ATTEMPTED")
