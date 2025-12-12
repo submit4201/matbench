@@ -1017,7 +1017,6 @@ Score this interaction."""
             base_price = negotiation_context.get("base_price", 10.0)
             current_price = negotiation_context.get("current_price", base_price)
             player_reputation = negotiation_context.get("player_reputation", 50)
-            player_name = negotiation_context.get("player_name", "Customer")
             order_history = negotiation_context.get("order_history", 0)
             conversation_history = negotiation_context.get("conversation_history", [])
             
@@ -1115,7 +1114,6 @@ Respond as {vendor_profile.get('name')} in JSON format:"""
         negotiation_context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Fallback rule-based vendor response."""
-        name = vendor_profile.get("name", "Vendor")
         base_price = negotiation_context.get("base_price", 10.0)
         player_reputation = negotiation_context.get("player_reputation", 50)
         
