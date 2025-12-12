@@ -2,9 +2,9 @@ import sys
 import os
 sys.path.append(os.getcwd())
 
-from src.models.hierarchy import WorldState, AgentState, LocationState
 from src.models.world import LaundromatState
 from src.engine.game_engine import GameEngine
+from src.models.events.commerce import PriceSetEvent
 import logging
 
 from src.engine.actions.registry import ActionRegistry

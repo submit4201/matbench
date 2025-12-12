@@ -1,13 +1,13 @@
 from typing import List, Dict, Any, Optional
 from pydantic import model_validator
 from src.config import settings
-from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, Bill, FinancialReport, TransactionCategory
+from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport, TransactionCategory
 from src.models.base import GameModel
 
 # Import from hierarchy to maintain compatibility and use new definitions
 from src.models.hierarchy import (
-    Machine, StaffMember, Building, 
-    AgentState, LocationState, WorldState
+    Machine, Building, 
+    AgentState, LocationState
 )
 from src.models.social import SocialScore
 

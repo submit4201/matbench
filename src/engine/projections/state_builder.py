@@ -4,7 +4,7 @@ from src.models.events.core import GameEvent
 from src.engine.projections.registry import EventRegistry
 
 # Import handlers to ensure they are registered
-import src.engine.projections.handlers
+from src.engine.projections import handlers  # noqa: F401
 
 class StateBuilder:
     """
