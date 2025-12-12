@@ -566,8 +566,12 @@ class GameEngine:
         # 3. Save & Apply Weekly Events
         if weekly_events:
             self.event_repo.save_batch(weekly_events)
+            # Group events by agent_id for batch application
+            events_by_agent = {}
             for event in weekly_events:
-                StateBuilder.apply_event(self.states[event.agent_id], event)
+                events_by_agent.setdefault(event.agent_id, []).append(event)
+            for agent_id, events in events_by_agent.items():
+                StateBuilder.apply_events(self.states[agent_id], events)
 
         # 5.5 Record Metrics (Audit)
         self.metrics_auditor.record_weekly_state(self.time_system.current_week, self.states)
