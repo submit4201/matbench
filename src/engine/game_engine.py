@@ -103,7 +103,7 @@ class GameEngine:
         Actions are validated and stored until the turn is processed.
         """
         if agent_id not in self.agent_ids:
-            logger.error(f"Unknown agent {agent_id} tried to submit action.")
+            self.logger.error(f"Unknown agent {agent_id} tried to submit action.")
             return False
             
         # Basic validation could happen here
@@ -139,7 +139,7 @@ class GameEngine:
                 # Reconstruct legacy result for return (Wait to apply event first?)
                 # We need to apply event to get 'new_balance' correct
             except Exception as e:
-                logger.error(f"Failed daily processing for {agent_id}: {e}")
+                self.logger.error(f"Failed daily processing for {agent_id}: {e}")
                 daily_results[agent_id] = {"error": str(e)}
 
         # Save & Apply Events (The "Brain" -> "Repository" -> "Scribe" loop)
@@ -169,11 +169,11 @@ class GameEngine:
         # 4. Weekly Processing (if Sunday ended) - bills, taxes, events, etc.
         results = {}
         if week_advanced:
-            logger.info(f"Week advanced to {self.time_system.current_week}. Running Weekly Processes.")
+            self.logger.info(f"Week advanced to {self.time_system.current_week}. Running Weekly Processes.")
             results = self.process_week()
             results["daily"] = daily_results
         else:
-            logger.info(f"Advanced to {self.time_system.current_day.value}")
+            self.logger.info(f"Advanced to {self.time_system.current_day.value}")
             results = {
                 "status": "day_advanced", 
                 "current_day": self.time_system.current_day.value,
@@ -362,7 +362,7 @@ class GameEngine:
         self.economy_system.update_trends(self.time_system.current_week)
         trend = self.economy_system.active_trend
         if trend and trend.week == self.time_system.current_week:
-            logger.info(f"Market Trend: {trend.news_headline}")
+            self.logger.info(f"Market Trend: {trend.news_headline}")
             # Broadcast news
             for agent_id in self.agent_ids:
                 self.communication.send_system_message(agent_id, f"BREAKING NEWS: {trend.news_headline}", self.time_system.current_week, intent=MessageIntent.ANNOUNCEMENT)
@@ -544,7 +544,7 @@ class GameEngine:
                     "new_balance": round(state.balance, 2)
                 }
             except Exception as e:
-                logger.error(f"Failed to process turn for agent {agent_id}: {e}", exc_info=True)
+                self.logger.error(f"Failed to process turn for agent {agent_id}: {e}", exc_info=True)
                 results[agent_id] = {"error": str(e), "customers": 0, "revenue": 0}
         
         # 3. Save & Apply Weekly Events
@@ -556,7 +556,7 @@ class GameEngine:
         # 5.5 Record Metrics (Audit)
         self.metrics_auditor.record_weekly_state(self.time_system.current_week, self.states)
 
-        logger.info(f"Processed logic for Week {self.time_system.current_week}")
+        self.logger.info(f"Processed logic for Week {self.time_system.current_week}")
         
         return results
 
@@ -700,7 +700,7 @@ class GameEngine:
         base_maintenance_cost = 20.0 * len(state.machines)
         if parts_used < parts_needed:
             base_maintenance_cost *= 1.5
-            logger.info(f"Agent {state.id} missing parts for maintenance! Cost penalty applied.")
+            self.logger.info(f"Agent {state.id} missing parts for maintenance! Cost penalty applied.")
             
         expense_maintenance = base_maintenance_cost
         expense_insurance = 37.5
