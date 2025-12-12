@@ -18,7 +18,7 @@ from src.engine.persistence.event_repo import EventRepository
 from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
 from src.models.events.finance import DailyRevenueProcessed, BillGenerated, WeeklySpendingReset, WeeklyReportGenerated
-from src.models.events.operations import MachineWearUpdated, MarketingBoostDecayed
+from src.models.events.operations import MachineWearUpdated, MarketingBoostDecayed, CleanlinessUpdated
 from src.models.events.social import ReputationChanged, ScandalStarted
 from src.models.events.commerce import ShipmentReceived
 import copy
@@ -424,6 +424,23 @@ class GameEngine:
                         remaining_boost=new_boost
                     )
                     weekly_events.append(marketing_event)
+
+                # --- Cleanliness Decay ---
+                base_decay = 0.05  # 5% natural decay per week
+                staff_effects = self._calculate_staff_effects(state)
+                cleaner_boost = staff_effects.get("cleanliness_boost", 0.0)
+                current_cleanliness = state.primary_location.cleanliness
+                new_cleanliness = max(0.0, min(1.0, current_cleanliness - base_decay + cleaner_boost))
+                
+                if new_cleanliness != current_cleanliness:
+                    cleanliness_event = CleanlinessUpdated(
+                        week=self.time_system.current_week,
+                        agent_id=agent_id,
+                        new_cleanliness=new_cleanliness,
+                        delta=new_cleanliness - current_cleanliness,
+                        reason="weekly_decay_with_staff"
+                    )
+                    weekly_events.append(cleanliness_event)
 
                 # --- Machine Wear (Physics) ---
                 for machine in state.machines:
