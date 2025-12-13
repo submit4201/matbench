@@ -24,3 +24,13 @@ class GameEvent(BaseModel):
 
     class Config:
         frozen = True # Events should be immutable
+
+class ActionFailed(GameEvent):
+    """
+    Event representing a failed action attempt.
+    Used for feedback and audit logs when an action cannot be completed.
+    """
+    type: str = "ACTION_FAILED"
+    action_type: str
+    reason: str
+    details: Dict[str, Any] = Field(default_factory=dict)

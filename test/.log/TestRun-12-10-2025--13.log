@@ -1,0 +1,32 @@
+2025-12-10 13:13:04,753 | INFO     | root:setup_test_logging:44 - ----------------------------------------------------------------
+2025-12-10 13:13:04,754 | INFO     | root:setup_test_logging:45 - Test Session Started. Logging to .test\.log\TestRun-12-10-2025--13.log
+2025-12-10 13:13:04,754 | INFO     | root:setup_test_logging:46 - ----------------------------------------------------------------
+2025-12-10 13:13:04,756 | INFO     | src.server:dispatch:54 - REQUEST: GET http://testserver/
+2025-12-10 13:13:04,757 | INFO     | src.server:dispatch:59 - RESPONSE: 404 (took 0.001s)
+2025-12-10 13:13:04,758 | INFO     | httpx:_send_single_request:1025 - HTTP Request: GET http://testserver/ "HTTP/1.1 404 Not Found"
+2025-12-10 13:13:04,761 | INFO     | src.server:dispatch:54 - REQUEST: GET http://testserver/nonexistent-endpoint
+2025-12-10 13:13:04,761 | INFO     | src.server:dispatch:59 - RESPONSE: 404 (took 0.001s)
+2025-12-10 13:13:04,762 | INFO     | httpx:_send_single_request:1025 - HTTP Request: GET http://testserver/nonexistent-endpoint "HTTP/1.1 404 Not Found"
+2025-12-10 13:13:04,762 | INFO     | root:setup_test_logging:50 - ----------------------------------------------------------------
+2025-12-10 13:13:04,763 | INFO     | root:setup_test_logging:51 - Test Session Ended.
+2025-12-10 13:13:04,763 | INFO     | root:setup_test_logging:52 - ----------------------------------------------------------------
+2025-12-10 13:14:53,347 | INFO     | root:setup_test_logging:44 - ----------------------------------------------------------------
+2025-12-10 13:14:53,347 | INFO     | root:setup_test_logging:45 - Test Session Started. Logging to .test\.log\TestRun-12-10-2025--13.log
+2025-12-10 13:14:53,348 | INFO     | root:setup_test_logging:46 - ----------------------------------------------------------------
+2025-12-10 13:14:54,258 | INFO     | src.engine:process_daily_turn:115 - Advanced to Tuesday
+2025-12-10 13:14:54,259 | INFO     | root:setup_test_logging:50 - ----------------------------------------------------------------
+2025-12-10 13:14:54,260 | INFO     | root:setup_test_logging:51 - Test Session Ended.
+2025-12-10 13:14:54,260 | INFO     | root:setup_test_logging:52 - ----------------------------------------------------------------
+2025-12-10 13:15:11,604 | INFO     | root:setup_test_logging:44 - ----------------------------------------------------------------
+2025-12-10 13:15:11,605 | INFO     | root:setup_test_logging:45 - Test Session Started. Logging to .test\.log\TestRun-12-10-2025--13.log
+2025-12-10 13:15:11,605 | INFO     | root:setup_test_logging:46 - ----------------------------------------------------------------
+2025-12-10 13:15:11,607 | INFO     | src.server:dispatch:54 - REQUEST: GET http://testserver/
+2025-12-10 13:15:11,608 | INFO     | src.server:dispatch:59 - RESPONSE: 404 (took 0.001s)
+2025-12-10 13:15:11,608 | INFO     | httpx:_send_single_request:1025 - HTTP Request: GET http://testserver/ "HTTP/1.1 404 Not Found"
+2025-12-10 13:15:11,611 | INFO     | src.server:dispatch:54 - REQUEST: GET http://testserver/nonexistent-endpoint
+2025-12-10 13:15:11,611 | INFO     | src.server:dispatch:59 - RESPONSE: 404 (took 0.001s)
+2025-12-10 13:15:11,612 | INFO     | httpx:_send_single_request:1025 - HTTP Request: GET http://testserver/nonexistent-endpoint "HTTP/1.1 404 Not Found"
+2025-12-10 13:15:11,885 | INFO     | src.engine:process_daily_turn:115 - Advanced to Tuesday
+2025-12-10 13:15:11,886 | INFO     | root:setup_test_logging:50 - ----------------------------------------------------------------
+2025-12-10 13:15:11,886 | INFO     | root:setup_test_logging:51 - Test Session Ended.
+2025-12-10 13:15:11,886 | INFO     | root:setup_test_logging:52 - ----------------------------------------------------------------

@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from pydantic import Field, PrivateAttr
 from src.config import settings
-from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport
+from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport, Bill
 from src.models.base import GameModel
 from src.models.social import SocialScore, Ticket
 
@@ -51,6 +51,7 @@ class AgentState(GameModel):
     ledger: FinancialLedger = Field(default_factory=FinancialLedger)
     financial_reports: List[FinancialReport] = Field(default_factory=list)
     loans: List[Loan] = Field(default_factory=list)
+    bills: List[Bill] = Field(default_factory=list)
     
     # Reputation (Global Score)
     social_score: SocialScore = Field(default_factory=SocialScore)
@@ -59,6 +60,19 @@ class AgentState(GameModel):
     # Research/Perks
     unlocked_research: List[str] = Field(default_factory=list)
     perks: List[str] = Field(default_factory=list)
+    
+    # Social & Relationships
+    active_scandals: List[Dict[str, Any]] = Field(default_factory=list)
+    active_investigations: List[Dict[str, Any]] = Field(default_factory=list)
+    message_history: List[Dict[str, Any]] = Field(default_factory=list)
+    proposals: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    trust_scores: Dict[str, float] = Field(default_factory=dict)
+    alliances: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    # Vendor Relationships
+    vendor_discounts: Dict[str, float] = Field(default_factory=dict)
+    vendor_relationships: Dict[str, float] = Field(default_factory=dict)
     
     # Data Tracking
     history: Dict[str, List[float]] = Field(default_factory=lambda: {
@@ -113,6 +127,7 @@ class LocationState(GameModel):
     # Commercial
     price: float = settings.economy.default_price
     revenue_streams: Dict[str, RevenueStream] = Field(default_factory=dict) # Rev streams per location? Or global? Likely location.
+    weekly_spending: Dict[str, float] = Field(default_factory=lambda: {"utility": 0.0, "supplies": 0.0})
     
     # Active
     active_customers: int = 0
