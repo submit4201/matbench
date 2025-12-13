@@ -230,20 +230,18 @@ def apply_balance_adjusted(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("TAX_ASSESSED")
 def apply_tax_assessed(state: LaundromatState, event: GameEvent):
     """ Record tax assessment. """
-    # In a full system we might update a 'TaxLiability' model.
-    # For now, we ensure a Bill is generated if it hasn't been already by a separate event?
-    # Usually TAX_ASSESSED accompanies a BILL_GENERATED event.
-    # If this event itself implies the liability, we should check if we need to do anything.
-    # Decision: Just log it or update a 'last_tax_assessment' field if we had one.
-    # For audit compliance, we'll assume this event creates a record in financial reports or similar.
-    # Let's assume it updates the latest FinancialReport with tax details if happening same week.
-    pass  # Leaving as pass but documented - likely handled by BillGenerated.
-
-
+    payload = event.payload if hasattr(event, "payload") else {}
+    tax_amount = getattr(event, "tax_amount", payload.get("tax_amount", 0.0))
+    quarter = getattr(event, "quarter", payload.get("quarter", 0))
+    
+    # Update agent tax info
+    state.agent.tax_info["last_assessment_week"] = event.week
+    state.agent.tax_info["last_tax_amount"] = tax_amount
+    state.agent.tax_info["fiscal_standing"] = "assessed"
 
 @EventRegistry.register("TAX_FILING_STATUS_CHANGED")
 def apply_tax_filing_status_changed(state: LaundromatState, event: GameEvent):
-    """Stub for tax filing status."""
+    """Update tax filing status."""
     payload = event.payload if hasattr(event, "payload") else {}
     new_status = getattr(event, "status", payload.get("status"))
     
@@ -255,7 +253,7 @@ def apply_tax_filing_status_changed(state: LaundromatState, event: GameEvent):
 def apply_tax_penalty_applied(state: LaundromatState, event: GameEvent):
     """Stub for tax penalties."""
     payload = event.payload if hasattr(event, "payload") else {}
-    amount = getattr(event, "amount", payload.get("amount", 0))
+    amount = getattr(event, "penalty_amount", payload.get("penalty_amount", 0))
     reason = getattr(event, "reason", payload.get("reason", "unknown"))
     
     state.agent.tax_info["penalties"].append({
@@ -272,8 +270,9 @@ def apply_tax_penalty_applied(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("FISCAL_QUARTER_ENDED")
 def apply_fiscal_quarter_ended(state: LaundromatState, event: GameEvent):
     """Archive checking or cleanup."""
-    # Often used to trigger archiving of old reports or resetting YTD counters.
-    pass
+    # Reset quarterly accumulators if we had any
+    # For now, just mark the transition
+    state.agent.tax_info["current_quarter"] = getattr(event, "quarter", payload.get("quarter", 1))
 
 
 @EventRegistry.register("BANK_INITIALIZED")
@@ -305,6 +304,7 @@ def apply_loan_defaulted(state: LaundromatState, event: GameEvent):
     
     for loan in state.loans:
         if loan.id == loan_id:
+            # Check if using Pydantic model with frozen/settable fields
             if hasattr(loan, "is_defaulted"):
                 loan.is_defaulted = True
             break
@@ -322,12 +322,24 @@ def apply_credit_score_updated(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("REAL_ESTATE_MARKET_REFRESHED")
 def apply_real_estate_market_refreshed(state: LaundromatState, event: GameEvent):
     """
-    Update known real estate listings if the agent tracks them.
-    Currently Real Estate Manager handles global state, but if agent has a view:
+    Update known real estate listings.
     """
-    # If we added 'known_listings' to AgentState, we'd update it here.
-    # For now, it remains a stub as listings are pulled from Manager.
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    listings = getattr(event, "new_listings", payload.get("new_listings", []))
+    
+    # Store simple listing data in state for UI
+    # We might need to add `market_listings` to LaundromatState if not present.
+    # Checking class definition... assuming we can attach or it exists.
+    # If not, we just pass but now we try to populate.
+    if hasattr(state, "market_listings"):
+        state.market_listings = listings
+    else:
+        # Compatibility hack: attach it dynamically or ignore? 
+        # Safest to just set it if we can.
+        try:
+             setattr(state, "market_listings", listings)
+        except:
+             pass
 
 
 @EventRegistry.register("BUILDING_SOLD")

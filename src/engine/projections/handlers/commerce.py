@@ -175,8 +175,16 @@ def apply_vendor_discount_granted(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("VENDOR_MARKET_UPDATED")
 def apply_vendor_market_updated(state: LaundromatState, event: GameEvent):
-    """Stub for market updates."""
-    pass
+    """Update vendor specific market data (prices, effects)."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    vendor_id = getattr(event, "vendor_id", payload.get("vendor_id"))
+    updates = getattr(event, "updates", payload.get("updates", {}))
+    
+    # Store in a cache or update known prices
+    if not hasattr(state.agent, "vendor_market_data"):
+        state.agent.vendor_market_data = {}
+        
+    state.agent.vendor_market_data[vendor_id] = updates
 
 
 @EventRegistry.register("BUYOUT_OFFER_SENT")

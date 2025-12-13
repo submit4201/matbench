@@ -347,72 +347,26 @@ def handle_negotiate(state: LaundromatState, payload: Dict[str, Any], week: int,
     item = payload.get("item", "soap")
     vendor_id = payload.get("vendor_id", "bulkwash")
     
-    vendor_manager = context.get("vendor_manager")
-    if not vendor_manager:
-        return []
+    # 1. Validation (Pure)
+    # We define that you can always REQUEST a negotiation. 
+    # Logic for "can you actually do it?" could be here if it depends only on State (e.g. cooldown).
+    # For now, we assume requests are valid if they have minimum args.
     
-    vendor = vendor_manager.get_vendor(vendor_id)
-    if not vendor:
-        return []
-
-    # Get social score total
+    # Snapshot social score for the process
     social_score = state.social_score.total_score if hasattr(state.social_score, "total_score") else state.reputation
     
-    # Perform negotiation logic (side-effect: vendor state might update internally in manager? 
-    # Ideally, manager calculates result without mutating self until event applied, but legacy mutates.
-    # We will assume for now we call it to get the result, and emit events. 
-    # STRICTLY: Manager shouldn't mutate. But legacy `negotiate_price` might default to updating vendor history.
-    # We'll live with that side effect for now.)
-    result = vendor.negotiate_price(item, state.name, social_score, agent_id=state.id)
+    from src.models.events.commerce import NegotiationRequested
     
-    events = []
-    
-    from src.models.events.commerce import NegotiationAttempted, VendorNegotiationOutcome
-    from src.models.events.social import MessageSent
-    
-    # 1. Attempt Event
-    events.append(NegotiationAttempted(
-        week=week,
-        agent_id=state.id,
-        vendor_id=vendor_id,
-        item_type=item,
-        success=result["success"],
-        negotiation_power=social_score # Using social score as proxy for power
-    ))
-    
-    # 2. Outcome Event
-    events.append(VendorNegotiationOutcome(
-        week=week,
-        agent_id=state.id,
-        vendor_id=vendor_id,
-        success=result["success"],
-        new_price_multiplier=result.get("discount_multiplier", 1.0) if result["success"] else 1.0, # Guessing key
-        message=result["message"]
-    ))
-    
-    # 3. Message (Feedback)
-    events.append(MessageSent(
-        week=week,
-        agent_id=state.id, # Sender is system/vendor, but event uses agent_id as source? 
-        # No, MessageSent has msg_id, recipients, channel, content. Sender is implicit or part of content?
-        # Protocol: "sender_id" usually needed. Logic in legacy uses `communication.send_message(sender=vendor)`.
-        # The Event model has `MessageSent`. Let's check definition. 
-        # `MessageSent` has `recipients`. No explicit sender field shown in view? 
-        # Ah, `MessageSent` inherits `GameEvent` which has `agent_id` (usually "Subject" or "Actor").
-        # If Vendor sends it, agent_id might be the receiving agent (as it's their feed). 
-        # Or we need a detailed Message event structure.
-        # Legacy used: send_message(sender_id=vendor.name, recipient_id=state.id, ...)
-        # I will use `agent_id` as the player receiving it, and clarify sender in content/metadata if allowed.
-        # Actually Event usually implies "Something happening TO agent" or "BY agent".
-        # I'll stick to agent_id = state.id so it shows up in their event log.
-        msg_id=str(uuid.uuid4()),
-        recipients=[state.id],
-        channel="email", # Assumption
-        content=f"From: {vendor.profile.name}\n\n{result['message']}",
-        intent="negotiation_outcome"
-    ))
-    
-    return events
+    return [
+        NegotiationRequested(
+            week=week,
+            agent_id=state.id,
+            negotiation_id=str(uuid.uuid4()),
+            vendor_id=vendor_id,
+            item_type=item,
+            social_score_snapshot=social_score
+        )
+    ]
 
 
 @ActionRegistry.register("PERFORM_MAINTENANCE")

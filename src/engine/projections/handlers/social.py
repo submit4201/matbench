@@ -135,10 +135,15 @@ def apply_appeal_outcome(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("REGULATORY_STATUS_CHANGED")
 def apply_regulatory_status_changed(state: LaundromatState, event: GameEvent):
-    """Update global regulatory status if tracked."""
-    # This might be agent-level compliance score or similar.
-    # For now, pass unless we add a compliance field.
-    pass
+    """Update global regulatory status."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    status = getattr(event, "status", payload.get("status"))
+    score = getattr(event, "compliance_score", payload.get("compliance_score"))
+    
+    if status is not None:
+        state.agent.regulatory_status = status
+    if score is not None:
+        state.agent.compliance_score = score
 
 
 @EventRegistry.register("FORCED_DIVESTITURE_ORDERED")

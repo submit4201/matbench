@@ -76,6 +76,17 @@ class VendorRelationshipChanged(GameEvent):
     change_reason: str
 
 
+
+class NegotiationRequested(GameEvent):
+    """Event for signaling intent to negotiate (Async/Reaction trigger)."""
+    type: str = "NEGOTIATION_REQUESTED"
+    negotiation_id: str
+    vendor_id: str
+    item_type: str
+    offer_amount: Optional[float] = None
+    social_score_snapshot: float = 0.0 # Snapshot for reaction logic
+
+
 class NegotiationAttempted(GameEvent):
     """Event for logging a negotiation attempt details."""
     type: str = "NEGOTIATION_ATTEMPTED"
