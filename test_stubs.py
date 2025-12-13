@@ -83,5 +83,33 @@ def run_tests():
         print(f"FAIL: {e}")
         traceback.print_exc()
 
+    try:
+        print("\nTest 5: Buyout Rejected")
+        state.agent.proposals.append({"id": "P2", "status": "pending"})
+        evt = MockEvent(type="BUYOUT_OFFER_REJECTED", week=1, agent_id=state.id, payload={
+            "proposal_id": "P2"
+        })
+        from src.engine.projections.handlers.commerce import apply_buyout_offer_rejected
+        apply_buyout_offer_rejected(state, evt)
+        if state.agent.proposals[-1]["status"] != "rejected": raise Exception("Proposal not rejected")
+        print("PASS")
+    except Exception as e:
+        print(f"FAIL: {e}")
+        traceback.print_exc()
+
+    try:
+        print("\nTest 6: Group Creation")
+        evt = MockEvent(type="GROUP_CREATED", week=1, agent_id=state.id, payload={
+            "group_id": "G1", "name": "Test Group"
+        })
+        from src.engine.projections.handlers.social import apply_group_created
+        apply_group_created(state, evt)
+        if len(state.agent.groups) != 1: raise Exception("Group not created")
+        if state.agent.groups[0]["id"] != "G1": raise Exception("Wrong Group ID")
+        print("PASS")
+    except Exception as e:
+        print(f"FAIL: {e}")
+        traceback.print_exc()
+
 if __name__ == "__main__":
     run_tests()

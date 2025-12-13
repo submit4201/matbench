@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from pydantic import model_validator
+from pydantic import model_validator, Field
 from src.config import settings
 from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport, TransactionCategory
 from src.models.base import GameModel
@@ -7,7 +7,7 @@ from src.models.base import GameModel
 # Import from hierarchy to maintain compatibility and use new definitions
 from src.models.hierarchy import (
     Machine, Building, 
-    AgentState, LocationState
+    AgentState, LocationState, WorldState
 )
 from src.models.social import SocialScore
 
@@ -21,6 +21,7 @@ class LaundromatState(GameModel):
     name: str # Agent Name? Or Laundromat Name?
     
     # Composition
+    world: WorldState = Field(default_factory=WorldState)
     agent: Optional[AgentState] = None
     primary_location: Optional[LocationState] = None
     

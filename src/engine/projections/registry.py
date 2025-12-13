@@ -33,6 +33,7 @@ class EventRegistry:
         
         if not handlers:
             # Optional: Log warning for unhandled events if strict
+            logger.warning(f"No handlers found for event type: {event_type}")
             return
 
         for handler in handlers:

@@ -189,16 +189,19 @@ def apply_machine_state_changed(state: LaundromatState, event: GameEvent):
             break
 
 
+
 @EventRegistry.register("CUSTOMER_VISIT_STARTED")
 def apply_customer_visit_started(state: LaundromatState, event: GameEvent):
     """Stub for customer visit tracking."""
+    # High frequency - maybe only track aggregate if needed
     pass
+
 
 
 @EventRegistry.register("CUSTOMER_VISIT_BOUNCED")
 def apply_customer_visit_bounced(state: LaundromatState, event: GameEvent):
     """Stub for bounce tracking."""
-    pass
+    state.primary_location.traffic_stats["bounced_visits"] += 1
 
 
 @EventRegistry.register("CUSTOMER_COMPLAINT_FILED")
@@ -230,11 +233,23 @@ def apply_customer_service_completed(state: LaundromatState, event: GameEvent):
             break
 
 
+
 @EventRegistry.register("CUSTOMER_SENTIMENT_RECORDED")
 def apply_customer_sentiment_recorded(state: LaundromatState, event: GameEvent):
     """Stub for sentiment tracking."""
-    # Could update a rolling average if we had one.
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    sentiment = float(getattr(event, "sentiment_score", payload.get("sentiment_score", 0.0)))
+    
+    # Store history
+    state.primary_location.sentiment_history.append({
+        "week": event.week,
+        "score": sentiment,
+        "topic": getattr(event, "topic", payload.get("topic", "general"))
+    })
+    
+    # Keep history bounded? (Optional)
+    if len(state.primary_location.sentiment_history) > 100:
+        state.primary_location.sentiment_history.pop(0)
 
 
 @EventRegistry.register("TICKET_IGNORED")
@@ -262,10 +277,17 @@ def apply_proposal_submitted(state: LaundromatState, event: GameEvent):
     state.agent.proposals.append(proposal)
 
 
+
 @EventRegistry.register("PROPOSAL_EVALUATED")
 def apply_proposal_evaluated(state: LaundromatState, event: GameEvent):
-    """Stub for proposal evaluation."""
-    pass
+    """Update proposal status."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal_id = getattr(event, "proposal_id", payload.get("proposal_id"))
+    
+    for prop in state.agent.proposals:
+        if prop.get("id") == proposal_id:
+            prop["status"] = "under_review"
+            break
 
 
 @EventRegistry.register("PROPOSAL_APPROVED")
@@ -278,21 +300,47 @@ def apply_proposal_approved(state: LaundromatState, event: GameEvent):
         state.revenue_streams[stream_name].unlocked = True
 
 
+
 @EventRegistry.register("PROPOSAL_REJECTED")
 def apply_proposal_rejected(state: LaundromatState, event: GameEvent):
-    """Stub for proposal rejection."""
-    pass
+    """Update proposal status."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal_id = getattr(event, "proposal_id", payload.get("proposal_id"))
+    
+    for prop in state.agent.proposals:
+        if prop.get("id") == proposal_id:
+            prop["status"] = "rejected"
+            break
+
 
 
 @EventRegistry.register("LOCATION_ASSIGNED")
 def apply_location_assigned(state: LaundromatState, event: GameEvent):
     """Stub for zone assignment."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    zone_id = getattr(event, "zone_id", payload.get("zone_id"))
+    entity_id = getattr(event, "entity_id", payload.get("entity_id")) # e.g. machine or staff
+    
+    if zone_id and entity_id:
+        if zone_id not in state.primary_location.zones:
+            state.primary_location.zones[zone_id] = {"assigned_entities": []}
+            
+        if "assigned_entities" not in state.primary_location.zones[zone_id]:
+             state.primary_location.zones[zone_id]["assigned_entities"] = []
+             
+        state.primary_location.zones[zone_id]["assigned_entities"].append(entity_id)
 
 
 @EventRegistry.register("ZONE_TRAFFIC_SHIFTED")
 def apply_zone_traffic_shifted(state: LaundromatState, event: GameEvent):
     """Stub for traffic changes."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    zone_id = getattr(event, "zone_id", payload.get("zone_id"))
+    multiplier = getattr(event, "traffic_multiplier", payload.get("traffic_multiplier"))
+    
+    if zone_id and multiplier is not None:
+        if zone_id not in state.primary_location.zones:
+            state.primary_location.zones[zone_id] = {}
+        state.primary_location.zones[zone_id]["traffic_multiplier"] = multiplier
 
 

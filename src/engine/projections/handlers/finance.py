@@ -240,16 +240,33 @@ def apply_tax_assessed(state: LaundromatState, event: GameEvent):
     pass  # Leaving as pass but documented - likely handled by BillGenerated.
 
 
+
 @EventRegistry.register("TAX_FILING_STATUS_CHANGED")
 def apply_tax_filing_status_changed(state: LaundromatState, event: GameEvent):
     """Stub for tax filing status."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    new_status = getattr(event, "status", payload.get("status"))
+    
+    if new_status:
+        state.agent.tax_info["filing_status"] = new_status
 
 
 @EventRegistry.register("TAX_PENALTY_APPLIED")
 def apply_tax_penalty_applied(state: LaundromatState, event: GameEvent):
     """Stub for tax penalties."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    amount = getattr(event, "amount", payload.get("amount", 0))
+    reason = getattr(event, "reason", payload.get("reason", "unknown"))
+    
+    state.agent.tax_info["penalties"].append({
+        "week": event.week,
+        "amount": amount,
+        "reason": reason
+    })
+    
+    # Increase audit risk
+    current_risk = state.agent.tax_info.get("audit_risk", 0.0)
+    state.agent.tax_info["audit_risk"] = min(1.0, current_risk + 0.1)
 
 
 @EventRegistry.register("FISCAL_QUARTER_ENDED")

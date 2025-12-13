@@ -64,11 +64,20 @@ class AgentState(GameModel):
     # Social & Relationships
     active_scandals: List[Dict[str, Any]] = Field(default_factory=list)
     active_investigations: List[Dict[str, Any]] = Field(default_factory=list)
+    active_dilemmas: List[Dict[str, Any]] = Field(default_factory=list)
+    active_negotiations: Dict[str, Any] = Field(default_factory=dict)
+    tax_info: Dict[str, Any] = Field(default_factory=lambda: {
+        "filing_status": "standard",
+        "audit_risk": 0.0,
+        "penalties": []
+    })
+    
     message_history: List[Dict[str, Any]] = Field(default_factory=list)
     proposals: List[Dict[str, Any]] = Field(default_factory=list)
     
     trust_scores: Dict[str, float] = Field(default_factory=dict)
     alliances: List[Dict[str, Any]] = Field(default_factory=list)
+    groups: List[Dict[str, Any]] = Field(default_factory=list)
     
     # Vendor Relationships
     vendor_discounts: Dict[str, float] = Field(default_factory=dict)
@@ -118,6 +127,7 @@ class LocationState(GameModel):
         "parts": 5
     })
     pending_deliveries: List[Dict[str, Any]] = Field(default_factory=list)
+    supply_chain_status: Dict[str, Any] = Field(default_factory=dict) # e.g. {"detergent": "disrupted"}
     
     # Metrics
     cleanliness: float = 0.8
@@ -133,3 +143,14 @@ class LocationState(GameModel):
     active_customers: int = 0
     tickets: List[Ticket] = Field(default_factory=list)
     marketing_boost: float = 0.0 # Applied to this location
+    
+    traffic_stats: Dict[str, int] = Field(default_factory=lambda: {
+        "total_visits": 0,
+        "bounced_visits": 0,
+        "weekly_visits": 0
+    })
+    sentiment_history: List[Dict[str, Any]] = Field(default_factory=list)
+    zones: Dict[str, Any] = Field(default_factory=lambda: {
+        "main_floor": {"traffic_multiplier": 1.0},
+        "waiting_area": {"traffic_multiplier": 1.0}
+    })

@@ -10,17 +10,31 @@ if TYPE_CHECKING:
 
 @EventRegistry.register("TIME_ADVANCED")
 def apply_time_advanced(state: LaundromatState, event: GameEvent):
-    """Stub for time progression - time is managed externally by TimeSystem."""
-    pass
+    """
+    Time progression projection.
+    """
+    # Simply sync the world week.
+    state.world.current_week = event.week
 
 
 @EventRegistry.register("MARKET_TREND_CHANGED")
 def apply_market_trend_changed(state: LaundromatState, event: GameEvent):
-    """Stub for market trend updates - global state."""
-    pass
+    """
+    Update global market trends.
+    """
+    payload = event.payload if hasattr(event, "payload") else {}
+    trend_data = getattr(event, "trend_data", payload.get("trend_data"))
+    if trend_data:
+        # Merge or replace trends
+        state.world.market_trends.update(trend_data)
 
 
 @EventRegistry.register("WEATHER_CHANGED")
 def apply_weather_changed(state: LaundromatState, event: GameEvent):
-    """Stub for weather updates - affects customer behavior."""
-    pass
+    """
+    Update global weather.
+    """
+    payload = event.payload if hasattr(event, "payload") else {}
+    weather = getattr(event, "weather_condition", payload.get("weather_condition"))
+    if weather:
+        state.world.weather = weather

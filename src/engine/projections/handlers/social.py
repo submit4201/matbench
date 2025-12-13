@@ -16,8 +16,14 @@ def apply_reputation_change(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("TICKET_RESOLVED")
 def apply_ticket_resolved(state: LaundromatState, event: GameEvent):
-    # Pending detailed ticket tracking model
-    pass
+    from src.models.social import TicketStatus
+    payload = event.payload if hasattr(event, "payload") else {}
+    ticket_id = getattr(event, "ticket_id", payload.get("ticket_id"))
+    
+    for ticket in state.tickets:
+        if ticket.id == ticket_id:
+            ticket.status = TicketStatus.RESOLVED
+            break
 
 @EventRegistry.register("DILEMMA_RESOLVED")
 def apply_dilemma_resolved(state: LaundromatState, event: GameEvent):
@@ -64,44 +70,87 @@ def apply_investigation_opened(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("INVESTIGATION_STAGE_ADVANCED")
 def apply_investigation_stage_advanced(state: LaundromatState, event: GameEvent):
-    """Stub for investigation progression."""
-    pass
+    """Update investigation stage."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    case_id = getattr(event, "case_id", payload.get("case_id"))
+    stage = getattr(event, "new_stage", payload.get("new_stage"))
+    
+    for inv in state.agent.active_investigations:
+        if inv.get("id") == case_id:
+            inv["stage"] = stage
+            break
 
 
 @EventRegistry.register("REGULATORY_EVIDENCE_SUBMITTED")
 def apply_regulatory_evidence_submitted(state: LaundromatState, event: GameEvent):
-    """Stub for evidence submission."""
-    pass
+    """Log evidence submission."""
+    # Assuming we track evidence count or log in the investigation object
+    payload = event.payload if hasattr(event, "payload") else {}
+    case_id = getattr(event, "case_id", payload.get("case_id"))
+    
+    for inv in state.agent.active_investigations:
+        if inv.get("id") == case_id:
+            inv["evidence_submitted"] = True
+            break
 
 
 @EventRegistry.register("REGULATORY_FINDING")
 def apply_regulatory_finding(state: LaundromatState, event: GameEvent):
-    """Stub for regulatory verdict."""
-    pass
+    """Update investigation with finding."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    case_id = getattr(event, "case_id", payload.get("case_id"))
+    finding = getattr(event, "finding", payload.get("finding"))
+    
+    for inv in state.agent.active_investigations:
+        if inv.get("id") == case_id:
+            inv["finding"] = finding
+            inv["status"] = "closed" # Usually a finding closes the active phase
+            break
 
 
 @EventRegistry.register("APPEAL_FILED")
 def apply_appeal_filed(state: LaundromatState, event: GameEvent):
-    """Stub for appeal tracking."""
-    pass
+    """Track appeal."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    case_id = getattr(event, "case_id", payload.get("case_id"))
+    
+    for inv in state.agent.active_investigations:
+        if inv.get("id") == case_id:
+            inv["appeal_status"] = "pending"
+            break
 
 
 @EventRegistry.register("APPEAL_OUTCOME")
 def apply_appeal_outcome(state: LaundromatState, event: GameEvent):
-    """Stub for appeal result."""
-    pass
+    """Update appeal outcome."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    case_id = getattr(event, "case_id", payload.get("case_id"))
+    outcome = getattr(event, "outcome", payload.get("outcome"))
+    
+    for inv in state.agent.active_investigations:
+        if inv.get("id") == case_id:
+            inv["appeal_status"] = outcome
+            break
 
 
 @EventRegistry.register("REGULATORY_STATUS_CHANGED")
 def apply_regulatory_status_changed(state: LaundromatState, event: GameEvent):
-    """Stub for regulatory status."""
+    """Update global regulatory status if tracked."""
+    # This might be agent-level compliance score or similar.
+    # For now, pass unless we add a compliance field.
     pass
 
 
 @EventRegistry.register("FORCED_DIVESTITURE_ORDERED")
 def apply_forced_divestiture_ordered(state: LaundromatState, event: GameEvent):
-    """Stub for forced divestiture."""
-    pass
+    """Handle forced divestiture."""
+    # Severe event. Likely handled by specific logic to remove assets.
+    # Here we just flag it.
+    state.agent.active_scandals.append({
+        "type": "forced_divestiture",
+        "details": "Asset seizure ordered",
+        "week": event.week
+    })
 
 
 @EventRegistry.register("SCANDAL_STARTED")
@@ -126,8 +175,14 @@ def apply_scandal_resolved(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("DILEMMA_TRIGGERED")
 def apply_dilemma_triggered(state: LaundromatState, event: GameEvent):
-    """Stub for dilemma presentation."""
-    pass
+    """Track active dilemma."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    dilemma = {
+        "id": getattr(event, "dilemma_id", payload.get("dilemma_id")),
+        "week": event.week,
+        "status": "pending_resolution"
+    }
+    state.agent.active_dilemmas.append(dilemma)
 
 
 @EventRegistry.register("RISK_CONSEQUENCE_TRIGGERED")
@@ -214,17 +269,39 @@ def apply_message_sent(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("MESSAGE_ANALYZED")
 def apply_message_analyzed(state: LaundromatState, event: GameEvent):
-    """Stub for message analysis."""
-    pass
+    """Update message metadata with analysis."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    msg_id = getattr(event, "msg_id", payload.get("msg_id"))
+    sentiment = getattr(event, "sentiment", payload.get("sentiment"))
+    
+    for msg in state.agent.message_history:
+        if msg.get("id") == msg_id:
+            msg["sentiment"] = sentiment
+            break
 
 
 @EventRegistry.register("GROUP_CREATED")
 def apply_group_created(state: LaundromatState, event: GameEvent):
-    """Stub for group tracking."""
-    pass
+    """Track new group."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    group = {
+        "id": getattr(event, "group_id", payload.get("group_id")),
+        "name": getattr(event, "name", payload.get("name")),
+        "members": [state.id] # Founder
+    }
+    state.agent.groups.append(group)
 
 
 @EventRegistry.register("GROUP_MEMBER_ADDED")
 def apply_group_member_added(state: LaundromatState, event: GameEvent):
-    """Stub for group membership."""
-    pass
+    """Update group membership."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    group_id = getattr(event, "group_id", payload.get("group_id"))
+    new_member = getattr(event, "agent_id", payload.get("agent_id"))
+    
+    for group in state.agent.groups:
+        if group.get("id") == group_id:
+            if "members" not in group: group["members"] = []
+            if new_member not in group["members"]:
+                group["members"].append(new_member)
+            break

@@ -72,25 +72,55 @@ def apply_order_placed(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("SHIPMENT_SHIPPED")
 def apply_shipment_shipped(state: LaundromatState, event: GameEvent):
     """Stub for shipment tracking."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    order_id = getattr(event, "order_id", payload.get("order_id"))
+    
+    for delivery in state.primary_location.pending_deliveries:
+        if delivery.get("order_id") == order_id:
+            delivery["status"] = "shipped"
+            break
 
 
 @EventRegistry.register("SUPPLY_CHAIN_DISRUPTION_STARTED")
 def apply_supply_chain_disruption_started(state: LaundromatState, event: GameEvent):
     """Stub for disruption tracking."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    item_type = getattr(event, "item_type", payload.get("item_type"))
+    severity = getattr(event, "severity", payload.get("severity", "high"))
+    
+    if item_type:
+        state.primary_location.supply_chain_status[item_type] = {
+            "status": "disrupted",
+            "severity": severity,
+            "start_week": event.week
+        }
 
 
 @EventRegistry.register("SUPPLY_CHAIN_DISRUPTION_ENDED")
 def apply_supply_chain_disruption_ended(state: LaundromatState, event: GameEvent):
     """Stub for disruption end."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    item_type = getattr(event, "item_type", payload.get("item_type"))
+    
+    if item_type and item_type in state.primary_location.supply_chain_status:
+        # Either remove or mark resolved
+        del state.primary_location.supply_chain_status[item_type]
 
 
 @EventRegistry.register("VENDOR_NEGOTIATION_STARTED")
 def apply_vendor_negotiation_started(state: LaundromatState, event: GameEvent):
     """Stub for negotiation tracking."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    negotiation_id = getattr(event, "negotiation_id", payload.get("negotiation_id"))
+    vendor_id = getattr(event, "vendor_id", payload.get("vendor_id"))
+    
+    if negotiation_id:
+        state.agent.active_negotiations[negotiation_id] = {
+            "vendor_id": vendor_id,
+            "status": "active",
+            "attempts": 0,
+            "start_week": event.week
+        }
 
 
 @EventRegistry.register("VENDOR_NEGOTIATION_OUTCOME")
@@ -124,13 +154,23 @@ def apply_vendor_relationship_changed(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("NEGOTIATION_ATTEMPTED")
 def apply_negotiation_attempted(state: LaundromatState, event: GameEvent):
     """Stub for negotiation tracking."""
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    negotiation_id = getattr(event, "negotiation_id", payload.get("negotiation_id"))
+    
+    if negotiation_id and negotiation_id in state.agent.active_negotiations:
+        state.agent.active_negotiations[negotiation_id]["attempts"] += 1
+        state.agent.active_negotiations[negotiation_id]["last_attempt_week"] = event.week
 
 
 @EventRegistry.register("VENDOR_DISCOUNT_GRANTED")
 def apply_vendor_discount_granted(state: LaundromatState, event: GameEvent):
-    """Stub for discount tracking."""
-    pass
+    """Update discount (alternate redundancy)."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    vendor_id = getattr(event, "vendor_id", payload.get("vendor_id"))
+    new_multiplier = getattr(event, "discount_multiplier", payload.get("discount_multiplier"))
+    
+    if vendor_id and new_multiplier is not None:
+        state.agent.vendor_discounts[vendor_id] = new_multiplier
 
 
 @EventRegistry.register("VENDOR_MARKET_UPDATED")
@@ -170,11 +210,23 @@ def apply_buyout_offer_accepted(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("BUYOUT_OFFER_REJECTED")
 def apply_buyout_offer_rejected(state: LaundromatState, event: GameEvent):
-    """Stub for buyout rejection."""
-    pass
+    """Update buyout proposal status."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal_id = getattr(event, "proposal_id", payload.get("proposal_id"))
+    
+    for prop in state.agent.proposals:
+        if prop.get("id") == proposal_id:
+            prop["status"] = "rejected"
+            break
 
 
 @EventRegistry.register("BUYOUT_FAILED_INSUFFICIENT_FUNDS")
 def apply_buyout_failed(state: LaundromatState, event: GameEvent):
-    """Stub for buyout failure."""
-    pass
+    """Update buyout proposal status."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal_id = getattr(event, "proposal_id", payload.get("proposal_id"))
+    
+    for prop in state.agent.proposals:
+        if prop.get("id") == proposal_id:
+            prop["status"] = "failed_funds"
+            break
