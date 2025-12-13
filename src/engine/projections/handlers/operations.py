@@ -219,13 +219,21 @@ def apply_customer_complaint_filed(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("CUSTOMER_SERVICE_COMPLETED")
 def apply_customer_service_completed(state: LaundromatState, event: GameEvent):
-    """Stub for service completion tracking."""
-    pass
+    """Update Ticket status on completion."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    ticket_id = getattr(event, "ticket_id", payload.get("ticket_id"))
+    
+    # Find and close ticket
+    for ticket in state.tickets:
+        if ticket.id == ticket_id:
+            ticket.status = TicketStatus.CLOSED
+            break
 
 
 @EventRegistry.register("CUSTOMER_SENTIMENT_RECORDED")
 def apply_customer_sentiment_recorded(state: LaundromatState, event: GameEvent):
     """Stub for sentiment tracking."""
+    # Could update a rolling average if we had one.
     pass
 
 
@@ -242,8 +250,16 @@ def apply_ticket_ignored(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("PROPOSAL_SUBMITTED")
 def apply_proposal_submitted(state: LaundromatState, event: GameEvent):
-    """Stub for proposal tracking."""
-    pass
+    """Track submitted improvement/business proposals."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal = {
+        "id": getattr(event, "proposal_id", payload.get("proposal_id")),
+        "type": getattr(event, "proposal_type", payload.get("proposal_type", "business")),
+        "description": getattr(event, "description", payload.get("description", "")),
+        "status": "pending",
+        "week": event.week
+    }
+    state.agent.proposals.append(proposal)
 
 
 @EventRegistry.register("PROPOSAL_EVALUATED")

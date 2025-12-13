@@ -56,6 +56,7 @@ class StaffHired(GameEvent):
     role: str
     wage: float
     skill_level: float
+    staff_name: str = "Employee"
 
 
 class StaffFired(GameEvent):
@@ -63,6 +64,8 @@ class StaffFired(GameEvent):
     type: str = "STAFF_FIRED"
     staff_id: str
     reason: str
+    staff_name: str = "Employee"
+    severance_pay: float = 0.0
 
 
 class StaffQuits(GameEvent):
@@ -78,6 +81,8 @@ class StaffTrained(GameEvent):
     staff_id: str
     skill_gained: float
     cost: float
+    staff_name: str = "Employee"
+    final_skill_level: float = 0.5
 
 
 # --- Customer Events ---

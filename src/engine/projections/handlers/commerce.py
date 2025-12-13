@@ -99,8 +99,16 @@ def apply_vendor_negotiation_outcome(state: LaundromatState, event: GameEvent):
     payload = event.payload if hasattr(event, "payload") else {}
     vendor_id = getattr(event, "vendor_id", payload.get("vendor_id"))
     new_multiplier = getattr(event, "new_price_multiplier", payload.get("new_price_multiplier"))
+    
     if vendor_id and new_multiplier is not None:
         state.agent.vendor_discounts[vendor_id] = new_multiplier
+        
+    # Also log success/fail?
+    success = getattr(event, "success", payload.get("success"))
+    if success:
+        # Improve relationship
+        current_rel = state.agent.vendor_relationships.get(vendor_id, 0.5)
+        state.agent.vendor_relationships[vendor_id] = min(1.0, current_rel + 0.1)
 
 
 @EventRegistry.register("VENDOR_RELATIONSHIP_CHANGED")
@@ -133,14 +141,31 @@ def apply_vendor_market_updated(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("BUYOUT_OFFER_SENT")
 def apply_buyout_offer_sent(state: LaundromatState, event: GameEvent):
-    """Stub for buyout tracking."""
-    pass
+    """Track sent buyout offers."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    offer = {
+        "id": getattr(event, "proposal_id", payload.get("proposal_id")),
+        "target": getattr(event, "target_agent_id", payload.get("target_agent_id")),
+        "amount": getattr(event, "offer_amount", payload.get("offer_amount")),
+        "status": "pending",
+        "week": event.week
+    }
+    state.agent.proposals.append(offer)
 
 
 @EventRegistry.register("BUYOUT_OFFER_ACCEPTED")
 def apply_buyout_offer_accepted(state: LaundromatState, event: GameEvent):
-    """Stub for buyout acceptance."""
-    pass
+    """Handle accepted buyout."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal_id = getattr(event, "proposal_id", payload.get("proposal_id"))
+    
+    # Update proposal status
+    for prop in state.agent.proposals:
+        if prop.get("id") == proposal_id:
+            prop["status"] = "accepted"
+    
+    # Actual merger logic (transferring assets) usually handled by `MERGER_COMPLETED` 
+    # or specific asset transfer events. This just updates the proposal tracking.
 
 
 @EventRegistry.register("BUYOUT_OFFER_REJECTED")

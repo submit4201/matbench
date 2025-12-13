@@ -15,6 +15,7 @@ from src.engine.commerce.vendor import VendorManager
 from src.engine.commerce.real_estate import RealEstateManager
 from src.engine.metrics_auditor import MetricsAuditor
 from src.engine.persistence.event_repo import EventRepository
+from src.engine.core.event_bus import EventBus
 from src.engine.projections.state_builder import StateBuilder
 from src.engine.actions.registry import ActionRegistry
 from src.models.events.finance import DailyRevenueProcessed, BillGenerated, WeeklySpendingReset, WeeklyReportGenerated
@@ -24,6 +25,8 @@ from src.models.events.commerce import ShipmentReceived
 import copy
 # Load handlers modules to register them
 import src.engine.actions.handlers 
+from src.engine.reactions.communication import CommunicationReactions 
+from src.engine.reactions.notifications import NotificationReactions 
 
 # Utility cost constants per load
 STANDARD_WATER_COST_PER_LOAD = 0.15
@@ -44,7 +47,10 @@ class GameEngine:
         # But per instruction "Kill the Monolith", we should rely on Repo and Builder.
         # For Phase 1 transition, I will keep 'self.states' but manage it via events.
         
-        self.event_repo = EventRepository()
+        # For Phase 1 transition, I will keep 'self.states' but manage it via events.
+        
+        self.event_bus = EventBus()
+        self.event_repo = EventRepository(event_bus=self.event_bus)
         
         # Init States - we can create initial events or just init objects.
         # Creating initial objects for now to ease transition.
@@ -64,6 +70,13 @@ class GameEngine:
         # self.economy_system = EconomySystem() # Moved up
         self.regulator = RegulatoryBody()
         self.communication = CommunicationChannel()
+        # Initialize Reactions
+        self.comm_reactions = CommunicationReactions(self.communication)
+        self.comm_reactions.register(self.event_bus)
+        
+        self.notification_reactions = NotificationReactions(self.communication)
+        self.notification_reactions.register(self.event_bus)
+        
         self.trust_system = TrustSystem(agent_ids)
         self.merger_system = MergerSystem()
         self.vendor_manager = VendorManager()

@@ -21,16 +21,45 @@ def apply_ticket_resolved(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("DILEMMA_RESOLVED")
 def apply_dilemma_resolved(state: LaundromatState, event: GameEvent):
-    # Placeholder for dilemma resolution effects if not covered by other events (like money/rep)
-    pass
+    payload = event.payload if hasattr(event, "payload") else {}
+    effects = getattr(event, "effects", payload.get("effects", {}))
+    
+    # Apply Financial Effects
+    money_delta = effects.get("money", 0.0)
+    if money_delta != 0:
+        # We record it in ledger if we can, but projection usually just updates state.
+        # But Ledger needs transaction history? 
+        # Ideally FundsTransferred event handles money. 
+        # If this event implies money change WITHOUT FundsTransferred, we just update balance.
+        # Strict ES: We should have emitted FundsTransferred too.
+        # But for "Smart Event" pattern where one event does multiple things:
+        state.balance += money_delta
+
+    # Apply Reputation Effects
+    rep_delta = effects.get("reputation", 0.0)
+    if rep_delta != 0:
+        current_rep = state.agent.social_score.community_standing
+        state.agent.social_score.community_standing = max(0, min(100, current_rep + rep_delta))
+
+    # Apply Marketing Boost
+    marketing_delta = effects.get("marketing", 0.0)
+    if marketing_delta != 0:
+         state.primary_location.marketing_boost = max(0.0, state.primary_location.marketing_boost + marketing_delta)
 
 
 # --- Orphan Event Handlers (Future Feature Support) ---
 
 @EventRegistry.register("INVESTIGATION_OPENED")
 def apply_investigation_opened(state: LaundromatState, event: GameEvent):
-    """Stub for regulatory investigation tracking."""
-    pass
+    """Track new investigation."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    investigation = {
+        "id": getattr(event, "case_id", payload.get("case_id")),
+        "violation": getattr(event, "violation_type", payload.get("violation_type")),
+        "status": "active",
+        "week": event.week
+    }
+    state.agent.active_investigations.append(investigation)
 
 
 @EventRegistry.register("INVESTIGATION_STAGE_ADVANCED")
@@ -128,8 +157,16 @@ def apply_trust_score_changed(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("ALLIANCE_PROPOSED")
 def apply_alliance_proposed(state: LaundromatState, event: GameEvent):
-    """Stub for alliance proposal."""
-    pass
+    """Track alliance proposals."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    proposal = {
+        "id": getattr(event, "proposal_id", payload.get("proposal_id")),
+        "target": getattr(event, "target_agent_id", payload.get("target_agent_id")),
+        "type": getattr(event, "alliance_type", payload.get("alliance_type")),
+        "status": "pending_approval",
+        "terms": getattr(event, "terms", payload.get("terms", {}))
+    }
+    state.agent.alliances.append(proposal)
 
 
 @EventRegistry.register("ALLIANCE_FORMED")
@@ -162,8 +199,17 @@ def apply_alliance_expired(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("MESSAGE_SENT")
 def apply_message_sent(state: LaundromatState, event: GameEvent):
-    """Stub for message tracking."""
-    pass
+    """Log message history."""
+    payload = event.payload if hasattr(event, "payload") else {}
+    msg = {
+        "id": getattr(event, "msg_id", payload.get("msg_id")),
+        "recipients": getattr(event, "recipients", payload.get("recipients", [])),
+        "content": getattr(event, "content", payload.get("content")),
+        "channel": getattr(event, "channel", payload.get("channel")),
+        "intent": getattr(event, "intent", payload.get("intent")),
+        "week": event.week
+    }
+    state.agent.message_history.append(msg)
 
 
 @EventRegistry.register("MESSAGE_ANALYZED")

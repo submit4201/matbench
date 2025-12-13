@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from pydantic import Field, PrivateAttr
 from src.config import settings
-from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport
+from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport, Bill
 from src.models.base import GameModel
 from src.models.social import SocialScore, Ticket
 
@@ -51,6 +51,7 @@ class AgentState(GameModel):
     ledger: FinancialLedger = Field(default_factory=FinancialLedger)
     financial_reports: List[FinancialReport] = Field(default_factory=list)
     loans: List[Loan] = Field(default_factory=list)
+    bills: List[Bill] = Field(default_factory=list)
     
     # Reputation (Global Score)
     social_score: SocialScore = Field(default_factory=SocialScore)
@@ -62,6 +63,10 @@ class AgentState(GameModel):
     
     # Social & Relationships
     active_scandals: List[Dict[str, Any]] = Field(default_factory=list)
+    active_investigations: List[Dict[str, Any]] = Field(default_factory=list)
+    message_history: List[Dict[str, Any]] = Field(default_factory=list)
+    proposals: List[Dict[str, Any]] = Field(default_factory=list)
+    
     trust_scores: Dict[str, float] = Field(default_factory=dict)
     alliances: List[Dict[str, Any]] = Field(default_factory=list)
     

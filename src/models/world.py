@@ -104,6 +104,14 @@ class LaundromatState(GameModel):
         self.primary_location.machines = value
         
     @property
+    def staff(self):
+        return self.primary_location.staff
+        
+    @staff.setter
+    def staff(self, value):
+        self.primary_location.staff = value
+        
+    @property
     def inventory(self) -> Dict[str, int]:
         return self.primary_location.inventory
         
@@ -171,6 +179,22 @@ class LaundromatState(GameModel):
     @pending_deliveries.setter
     def pending_deliveries(self, value):
         self.primary_location.pending_deliveries = value
+    @property
+    def bills(self):
+        return self.agent.bills
+        
+    @bills.setter
+    def bills(self, value):
+        self.agent.bills = value
+
+    @property
+    def loans(self):
+        return self.agent.loans
+
+    @loans.setter
+    def loans(self, value):
+        self.agent.loans = value
+
     # --- REMOVED METHODS ---
     # update_reputation, update_social_score, update_inventory_usage, process_week
     # These must be handled by the Engine or Services now.

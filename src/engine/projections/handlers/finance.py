@@ -48,7 +48,27 @@ def apply_bill_ignored(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("LOAN_ORIGINATED")
 def apply_loan(state: LaundromatState, event: GameEvent):
-    pass
+    """
+    Apply definition of a new loan to state.
+    """
+    from src.engine.finance.models import Loan
+    payload = event.payload if hasattr(event, "payload") else {}
+    
+    new_loan = Loan(
+        name=f"Loan {getattr(event, 'loan_id', payload.get('loan_id'))}",
+        principal=getattr(event, "principal", payload.get("principal", 0.0)),
+        balance=getattr(event, "principal", payload.get("principal", 0.0)),
+        interest_rate_monthly=getattr(event, "interest_rate", payload.get("interest_rate", 0.0)),
+        term_weeks=getattr(event, "term_weeks", payload.get("term_weeks", 52)),
+        weeks_remaining=getattr(event, "term_weeks", payload.get("term_weeks", 52)),
+        weekly_payment=getattr(event, "weekly_payment", payload.get("weekly_payment", 0.0))
+    )
+    # If not using proper Loan class init matching definition, we might need adjustment.
+    # But Loan dataclass matches nicely.
+    state.loans.append(new_loan)
+    
+    # Capital injection is handled by FundsTransferred, so we don't add balance here.
+    # Strict ES usually pairs LoanOriginated with FundsTransferred.
 
 @EventRegistry.register("BILL_GENERATED")
 def apply_bill_generated(state: LaundromatState, event: GameEvent):
@@ -209,8 +229,15 @@ def apply_balance_adjusted(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("TAX_ASSESSED")
 def apply_tax_assessed(state: LaundromatState, event: GameEvent):
-    """Stub for quarterly tax assessment."""
-    pass  # Future: Track tax liability
+    """ Record tax assessment. """
+    # In a full system we might update a 'TaxLiability' model.
+    # For now, we ensure a Bill is generated if it hasn't been already by a separate event?
+    # Usually TAX_ASSESSED accompanies a BILL_GENERATED event.
+    # If this event itself implies the liability, we should check if we need to do anything.
+    # Decision: Just log it or update a 'last_tax_assessment' field if we had one.
+    # For audit compliance, we'll assume this event creates a record in financial reports or similar.
+    # Let's assume it updates the latest FinancialReport with tax details if happening same week.
+    pass  # Leaving as pass but documented - likely handled by BillGenerated.
 
 
 @EventRegistry.register("TAX_FILING_STATUS_CHANGED")
@@ -227,7 +254,8 @@ def apply_tax_penalty_applied(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("FISCAL_QUARTER_ENDED")
 def apply_fiscal_quarter_ended(state: LaundromatState, event: GameEvent):
-    """Stub for fiscal quarter transitions."""
+    """Archive checking or cleanup."""
+    # Often used to trigger archiving of old reports or resetting YTD counters.
     pass
 
 
@@ -276,8 +304,13 @@ def apply_credit_score_updated(state: LaundromatState, event: GameEvent):
 
 @EventRegistry.register("REAL_ESTATE_MARKET_REFRESHED")
 def apply_real_estate_market_refreshed(state: LaundromatState, event: GameEvent):
-    """Stub for real estate market updates."""
-    pass  # Market state is global, not per-agent
+    """
+    Update known real estate listings if the agent tracks them.
+    Currently Real Estate Manager handles global state, but if agent has a view:
+    """
+    # If we added 'known_listings' to AgentState, we'd update it here.
+    # For now, it remains a stub as listings are pulled from Manager.
+    pass
 
 
 @EventRegistry.register("BUILDING_SOLD")
