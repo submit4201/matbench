@@ -1,10 +1,8 @@
 
-import pytest
 from src.world.laundromat import LaundromatState
 from src.engine.actions.handlers import handle_hire_staff, handle_pay_bill, handle_resolve_dilemma
 from src.engine.projections.handlers.social import apply_dilemma_resolved
 from src.engine.finance import Bill
-from src.models.events.core import GameEvent
 from src.models.events.social import DilemmaResolved
 
 def test_hire_staff_purity():

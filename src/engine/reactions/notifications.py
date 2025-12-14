@@ -1,4 +1,3 @@
-from typing import List
 from src.engine.core.event_bus import EventBus
 from src.models.events.core import GameEvent
 from src.engine.social.communication import CommunicationChannel, MessageIntent

@@ -8,8 +8,7 @@ sys.path.append(os.getcwd())
 
 try:
     from src.world.laundromat import LaundromatState
-    from src.engine.projections.handlers.commerce import apply_buyout_offer_sent, apply_vendor_negotiation_outcome
-    from src.engine.projections.handlers.operations import apply_proposal_submitted, apply_customer_service_completed
+    from src.engine.projections.handlers.commerce import apply_buyout_offer_sent
     from src.engine.projections.handlers.social import apply_investigation_opened, apply_message_sent
     from src.engine.projections.handlers.finance import apply_loan
     from src.models.events.core import GameEvent

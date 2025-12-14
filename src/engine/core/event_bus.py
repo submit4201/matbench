@@ -1,4 +1,4 @@
-from typing import Dict, List, Callable, Type
+from typing import Dict, List, Callable
 from src.models.events.core import GameEvent
 import logging
 
@@ -22,7 +22,7 @@ class EventBus:
 
     def publish(self, event: GameEvent):
         """Publish an event to all subscribers."""
-        event_type = event.event_type
+        event_type = event.type
         if event_type in self._subscribers:
             for handler in self._subscribers[event_type]:
                 try:

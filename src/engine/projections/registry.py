@@ -1,9 +1,12 @@
 from __future__ import annotations
 from typing import Callable, Dict, List, TYPE_CHECKING
+import logging
 
 if TYPE_CHECKING:
     from src.models.world import LaundromatState
     from src.models.events.core import GameEvent
+
+logger = logging.getLogger(__name__)
 
 # Type definition for an event handler
 # Function takes (State, Event) -> None (Mutates state in place)
