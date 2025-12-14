@@ -8,6 +8,17 @@ from .core import GameEvent
 
 # --- Supply Chain Events ---
 
+class SupplyOrdered(GameEvent):
+    """Event for when supplies are ordered (Action initiated)."""
+    type: str = "SUPPLY_ORDERED"
+    order_id: str
+    vendor_id: str
+    item: str
+    quantity: int
+    cost: float
+    arrival_week: int
+
+
 class OrderPlaced(GameEvent):
     """Event for when a supply order is placed."""
     type: str = "ORDER_PLACED"

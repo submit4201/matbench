@@ -70,6 +70,10 @@ class GameEngine:
         # self.economy_system = EconomySystem() # Moved up
         self.regulator = RegulatoryBody()
         self.communication = CommunicationChannel()
+        self.financial_system = FinancialSystem(agent_ids)
+        self.real_estate_manager = RealEstateManager()
+        self.vendor_manager = VendorManager() # Init first
+        
         # Initialize Reactions
         self.comm_reactions = CommunicationReactions(self.communication)
         self.comm_reactions.register(self.event_bus)
@@ -77,13 +81,19 @@ class GameEngine:
         self.notification_reactions = NotificationReactions(self.communication)
         self.notification_reactions.register(self.event_bus)
         
+        from src.engine.reactions.commerce import CommerceReactions
+        self.commerce_reactions = CommerceReactions(self.vendor_manager)
+        self.commerce_reactions.register(self.event_bus, communication_system=self.communication, calendar_system=None) 
+        
+        from src.engine.reactions.finance import FinanceReactions
+        self.finance_reactions = FinanceReactions(self.event_bus, self.financial_system.credit_system, self.communication)
+        
         self.trust_system = TrustSystem(agent_ids)
-        self.merger_system = MergerSystem()
-        self.vendor_manager = VendorManager()
+        self.merger_system = MergerSystem() 
         self.proposal_manager = ProposalManager(self)
         self.metrics_auditor = MetricsAuditor()
-        self.financial_system = FinancialSystem(agent_ids)
-        self.real_estate_manager = RealEstateManager()
+
+
         
         # Initialize Logger
         self.logger = get_logger("src.engine", category="engine")
@@ -574,8 +584,8 @@ class GameEngine:
         # 1. Lookup Handler
         handler = ActionRegistry.get_handler(action_type)
         if not handler:
-            # Fallback for ACTIONS NOT YET MIGRATED
-            return self._apply_legacy_action(state, action)
+            self.logger.warning(f"Action '{action_type}' received but not handled by Registry.")
+            return False
             
         # 2. Execute Handler (Pure Logic)
         try:
@@ -597,15 +607,6 @@ class GameEngine:
             
         return True
 
-    def _apply_legacy_action(self, state: LaundromatState, action: Dict[str, Any]):
-        """
-        Legacy fallback - DEPRECATED.
-        All actions should now be migrated to ActionRegistry.
-        This method is left as a stub to prevent crashes if old actions linger,
-        but it logs a warning.
-        """
-        self.logger.warning(f"Legacy action '{action.get('type')}' received but not handled by Registry. Ignoring.")
-        return False
 
     def _process_financials(self, state: LaundromatState, seasonal_mods: Dict[str, float], customer_count: float) -> FinancialReport:
         """

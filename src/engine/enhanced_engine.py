@@ -62,6 +62,11 @@ class EnhancedGameEngine:
         self.neighborhood = NeighborhoodSystem(agent_ids)
         self.ethical_manager = EthicalEventManager()
         
+        # Inject Calendar into Commerce Reactions
+        if hasattr(self.engine, 'commerce_reactions'):
+             self.engine.commerce_reactions.calendar = self.calendar_manager
+
+        
         # Forward common attributes
         # Forwarding is handled by properties or __getattr__
         # self.states = self.engine.states

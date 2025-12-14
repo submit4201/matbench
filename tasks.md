@@ -24,22 +24,21 @@ This document compiles all refactoring suggestions and specific user notes gathe
 
 ## Frontend
 
-- [ ] **State Management**: Evaluate moving from `useState`/`prop drilling` to
-- - [/] - zustand
-- - [ ] - noy sure if this is a good idea  idk if i like it or not
+- [x] **State Management**: Evaluate moving from `useState`/`prop drilling` to
+  - _User Note_: `# [x] Switched to zustand (Verified in package.json)`
 - [x] **Dashboard Fix**: Resolve Dashboard Component issues.
   - _User Note_: `# ! [x] working as of 12/8`
 - [/] **Turn Handling**: Add daily options alongside real-time/weekly modes.
   - _User Note_: `# [x] we decide on a 10 minute day/turn`
-  - _User Note_: `# [ ] we need to complete the turn system`
+  - _User Note_: `# [ ] we need to complete the turn system logic`
 - [x] **Type Safety**: Automate generation of TypeScript interfaces from Python Pydantic models.
   - _User Note_: `# [x] Completed. Run 'npm run generate-types' in frontend.`
 - [ ] **Real-time Updates**: Implement WebSockets for state updates (replacing polling).
   - _User Note_: `# [ ] we need to complete the turn system`
-- [/] __**Provider Logic**: Use a Factory pattern for LLM providers.__
-  - _User Note_: `# [ ] we need to complete this  system`
-  - [ ] - we to makr dure whatever llns the playwe chooses thats what we use
-  - [ ] - we should off offer chooses on the game master and judge llms too
+- [x] __**Provider Logic**: Use a Factory pattern for LLM providers.__
+  - _User Note_: `# [x] Implemented NPCFactory in src/engine/llm_npc_factory.py`
+  - [x] - Supports swapping providers (openai, etc) via env vars
+  - [x] - Offers choices for game master and judge llms too (in factory methods)
 
 ### Agent Tools Wishlist (Registration Needed) (COMPLETED)
 
@@ -152,11 +151,13 @@ this should noot be automatic the players should schedule based on theyre terms 
 
 ## Engine: Game Architecture (GameEngine)
 
-- [ ] **Event Handling**: Delegate event handling to Game Master/World Event System.
-   - and how they will be handled and constructed and implemented with gm and judge
-- [ ] **Vendor Handling**: Delegate vendor logic to Game Master/World Vendor System.
-     how the vendor system with use the gm for player facing actions
-     how the vendor system effects the market ing and inventory dilvery systems
+- [/] **Event Handling**: Delegate event handling to Game Master/World Event System.
+   - [x] Pub/Sub EventBus implemented (`src/engine/core/event_bus.py`)
+   - [x] Reactions layer created (`src/engine/reactions/`)
+   - [ ] Full delegation to GM/Judge pending
+- [/] **Vendor Handling**: Delegate vendor logic to Game Master/World Vendor System.
+     - [x] Async Negotiation flow implemented
+     - [ ] Full GM delegation pending
 - [ ] **Communication**: Delegate messaging to Game Master Communication System.
      deligatiopn to a gm llm for interactions with seprate historys per agent, or customer or vendor or entity
 - [ ] **Action Dispatching**: set up and complete action dispatching system command stratagy with retrievers and handlers
@@ -201,7 +202,10 @@ this should noot be automatic the players should schedule based on theyre terms 
 ### Vendors & Inventory
 - [x] **Supply Feedback**: Show cost/delivery date confirmation when buying supplies.
 - [x] **Vendor Inventory**: Show current stock levels alongside vendor catalog.
-- [ ] **Negotiation**: Move negotiation to Message Center (LLM interaction) instead of simple button click.
+- [/] **Negotiation**: Move negotiation to Message Center (LLM interaction) instead of simple button click.
+  - _User Note_: `# [x] Backend pure async flow implemented.`
+  - _User Note_: `# [x] MessageCenter supports chat-based negotiation.`
+  - _User Note_: `# [ ] VendorHub still uses legacy button. Needs unification.`
 - [x] **Deliveries UI**: Add "Incoming Deliveries" modal/view with arrival estimates.
 
 ### Finance

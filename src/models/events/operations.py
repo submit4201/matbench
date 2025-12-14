@@ -46,6 +46,13 @@ class MaintenancePerformed(GameEvent):
     parts_used: Dict[str, int]
     machines_fixed: List[str]
 
+class EmergencyRepairPerformed(GameEvent):
+    """Event for performing emergency repairs."""
+    type: str = "EMERGENCY_REPAIR_PERFORMED"
+    cost: float
+    machines_fixed: int
+
+
 
 # --- Staff Events ---
 

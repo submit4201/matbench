@@ -141,6 +141,30 @@ class FiscalQuarterEnded(GameEvent):
 
 # --- Loan & Banking Events ---
 
+# --- Loan & Banking Events ---
+
+class LoanApplied(GameEvent):
+    """Event for when an agent applies for a loan."""
+    type: str = "LOAN_APPLIED"
+    loan_type: str
+    amount: float = Field(gt=0)
+    application_id: str
+
+class LoanApproved(GameEvent):
+    """Event for when a loan is approved (triggers money transfer)."""
+    type: str = "LOAN_APPROVED"
+    application_id: str
+    loan_id: str
+    amount: float
+    interest_rate: float
+    weekly_payment: float
+
+class LoanDenied(GameEvent):
+    """Event for when a loan is denied."""
+    type: str = "LOAN_DENIED"
+    application_id: str
+    reason: str
+
 class BankInitialized(GameEvent):
     """Event for initial bank state."""
     type: str = "BANK_INITIALIZED"

@@ -23,20 +23,64 @@ class CommerceReactions:
     def __init__(self, vendor_manager: VendorManager):
         self.vendor_manager = vendor_manager
     
-    def register(self, bus: EventBus):
+    def register(self, bus: EventBus, communication_system=None, calendar_system=None):
         """Register listeners for commerce workflows."""
         self.bus = bus
+        self.communication = communication_system
+        self.calendar = calendar_system
+        
         bus.subscribe("NEGOTIATION_REQUESTED", self.on_negotiation_requested)
+        bus.subscribe("SUPPLY_ORDERED", self.on_supply_ordered)
         bus.subscribe("BILL_PAID", self.on_bill_paid)
         bus.subscribe("BILL_IGNORED", self.on_bill_ignored)
         logger.info("Registered CommerceReactions")
+
+    def on_supply_ordered(self, event: GameEvent):
+        """Handle supply order confirmation and logistics."""
+        # We assume event is SupplyOrdered type, though type hinting might be loose here
+        if event.type != "SUPPLY_ORDERED": return
+
+        # 1. Send Confirmation Message
+        if self.communication:
+            self.communication.send_message(
+                sender_id="Supply Chain",
+                recipient_id=event.agent_id,
+                content=f"📦 **Order Confirmed**: {event.quantity} {event.item} from {event.vendor_id}. Expected delivery: Week {event.arrival_week}.",
+                week=event.week,
+                intent="notification"
+            )
+
+        # 2. Schedule Calendar Event
+        # We need access to the calendar system. Assuming we can pass it or get it.
+        # Ideally, CalendarSystem is passed in __init__ or register.
+        if self.calendar:
+            try:
+                # We need to get the specific agent's calendar. 
+                # Assuming calendar_system is a manager or we have a way.
+                # If calendar_system IS the manager, maybe `get_calendar(agent_id)`?
+                # Using reflection or assuming standard interface
+                agent_calendar = self.calendar.get_calendar(event.agent_id) if hasattr(self.calendar, "get_calendar") else None
+                
+                if agent_calendar:
+                    from src.engine.core.calendar import ActionCategory, ActionPriority
+                    agent_calendar.schedule_action(
+                        category=ActionCategory.SUPPLY_ORDER,
+                        title=f"Delivery: {event.quantity} {event.item}",
+                        description=f"Delivery from {event.vendor_id}",
+                        week=event.arrival_week,
+                        day=1,
+                        priority=ActionPriority.MEDIUM,
+                        current_week=event.week
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to schedule delivery on calendar: {e}")
 
     def on_negotiation_requested(self, event: GameEvent):
         """
         Process a negotiation request.
         Calculates success/fail using VendorManager (pure logic wrapper) and emits results.
         """
-        if not isinstance(event, NegotiationRequested): return
+        if event.type != "NEGOTIATION_REQUESTED": return
 
         vendor_id = event.vendor_id
         vendor = self.vendor_manager.get_vendor(vendor_id)
@@ -87,16 +131,6 @@ class CommerceReactions:
         )
         
         # Dispatch all
-        # Note: In a real EventBus, we'd need a way to publish. 
-        # Assuming the bus object passed to `register` is reference held by Engine,
-        # OR we need a reference to the BUS to publish.
-        # BUT: The `bus` arg in `register` is a local var. 
-        # Standard pattern: Component should have `self.bus = bus`?
-        # Or Engine handles return values? 
-        # If this is a Synchronous Event Bus, publishing inside a handler might recurse.
-        # We need to verify how `EventBus` works. If it just calls callbacks, we need access to it.
-        # I will check `src/engine/core/event_bus.py`.
-        # For now, I'll assume we need to store the bus reference.
         self._publish_if_safe(attempt_evt)
         self._publish_if_safe(outcome_evt)
         self._publish_if_safe(msg_evt)
@@ -116,4 +150,5 @@ class CommerceReactions:
             self.bus.publish(event)
         else:
             logger.error("EventBus not connected to CommerceReactions")
+
 
