@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any
 
 from pydantic import Field
 
@@ -76,6 +76,17 @@ class VendorRelationshipChanged(GameEvent):
     change_reason: str
 
 
+
+class NegotiationRequested(GameEvent):
+    """Event for signaling intent to negotiate (Async/Reaction trigger)."""
+    type: str = "NEGOTIATION_REQUESTED"
+    negotiation_id: str
+    vendor_id: str
+    item_type: str
+    offer_amount: Optional[float] = None
+    social_score_snapshot: float = 0.0 # Snapshot for reaction logic
+
+
 class NegotiationAttempted(GameEvent):
     """Event for logging a negotiation attempt details."""
     type: str = "NEGOTIATION_ATTEMPTED"
@@ -149,3 +160,8 @@ class InventoryStocked(GameEvent):
     quantity: int = Field(gt=0)
     cost: float = Field(ge=0)
 
+
+class DeliveryListUpdated(GameEvent):
+    """Event for updating pending deliveries list after processing arrivals."""
+    type: str = "DELIVERY_LIST_UPDATED"
+    remaining_deliveries: List[Dict[str, Any]] = Field(default_factory=list)

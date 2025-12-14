@@ -35,7 +35,6 @@ htmlcov/
 .bak/
 # Logs
 logs/
-*.log
 # Editor
 .vscode/
 .idea/
@@ -55,3 +54,11 @@ frontend/yarn-error.log*
 verify_output.txt
 simulation_log.json
 brain/
+.log/
+.test/
+test/.log/
+class.uml
+seq.uml
+newrelic.ini
+.drawio.svg
+seq copy.uml

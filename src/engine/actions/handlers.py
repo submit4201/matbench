@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 from src.engine.actions.registry import ActionRegistry
 from src.models.world import LaundromatState
-from src.models.events.core import GameEvent
+from src.models.events.core import GameEvent, ActionFailed
 from src.models.events.commerce import PriceSetEvent, InventoryStocked
 from src.models.events.finance import FundsTransferred, BillPaid
 from src.models.events.operations import MachinePurchased, MarketingCampaignStarted, TicketResolved, StaffHired, StaffFired, StaffTrained
@@ -138,18 +138,20 @@ def handle_resolve_ticket(state: LaundromatState, payload: Dict[str, Any], week:
 @ActionRegistry.register("PAY_BILL")
 def handle_pay_bill(state: LaundromatState, payload: Dict[str, Any], week: int, context: Dict[str, Any]) -> List[GameEvent]:
     bill_id = payload.get("bill_id")
-    # In a real system we'd look up the bill amount from state.ledger.bills or similar.
-    # For now we'll assume the payload might have amount OR we simulate a lookup.
-    # Since we don't have deeply nested bill objects easily accessible without a manager:
-    # We will assume for migration safety that the FE passes the amount, or we fail.
-    # Actually, legacy logic called `self.financial_system.pay_bill`.
-    # We can't access `self` here (handlers are pure functions).
-    # So we must rely on state containing the bill or payload containing data.
-    # Let's trust the payload for amount for this phase, or skip validating exact amount.
-    amount = float(payload.get("amount", 0)) # Frontend should pass this
     
-    if amount <= 0 or state.balance < amount:
+    # 1. Validation: Use State Source of Truth
+    bill = next((b for b in state.bills if b.id == bill_id), None)
+    
+    if not bill:
+        return [] # Or ActionFailed? For now silent fail if bill gone.
+        
+    if bill.is_paid:
         return []
+        
+    amount = bill.amount
+    
+    if state.balance < amount:
+        return [] # Fail silently or ActionFailed (Legacy returned False)
 
     return [
         FundsTransferred(
@@ -158,7 +160,7 @@ def handle_pay_bill(state: LaundromatState, payload: Dict[str, Any], week: int, 
             transaction_id=str(uuid.uuid4()),
             amount=-amount,
             category="liability",
-            description=f"Paid Bill {bill_id}"
+            description=f"Paid Bill {bill.name}"
         ),
         BillPaid(
             week=week,
@@ -166,7 +168,7 @@ def handle_pay_bill(state: LaundromatState, payload: Dict[str, Any], week: int, 
             bill_id=bill_id,
             amount_paid=amount,
             payment_week=week,
-            was_late=False # Simplified
+            was_late=week > bill.due_week
         )
     ]
 
@@ -204,28 +206,13 @@ def handle_resolve_dilemma(state: LaundromatState, payload: Dict[str, Any], week
     dilemma_id = payload.get("dilemma_id")
     choice_id = payload.get("choice_id")
     
-    # In a full migration, we calculate outcome here or in a service.
-    # Since handlers are pure, we really should just emit "DilemmaResolved" 
-    # and let a Reaction/Saga calculate the outcome?
-    # OR, we pre-calculate simple effects here if possible.
-    # Legacy logic called `ethical_event_manager.resolve_dilemma`.
-    # Tests/FE expect an outcome immediately? 
-    # For now, we will emit a generic resolution event.
-    # Side effects (money, rep) must be explicitly added to event if known,
-    # or we handle them via separate mechanism.
-    # Let's rely on the payload passing the expected outcome effects if known (migration hack),
-    # or just emit the resolution and assumes the Manager listens to it?
-    # The ActionRegistry handles STATE updates via StateBuilder.
-    # So we need to emit events for the effects: money, rep.
+    # Extract calculated effects from payload (Migration Hack: FE/Manager passes expected outcome)
+    # Ideally, this should be calculated here using a Service in context, but explicit instruction
+    # is to move side effects out or ensure Event carries the data.
+    # We assume 'effects' dict contains { 'reputation': 5.0, 'money': -100.0, 'flags': [...] }
+    effects = payload.get("effects", {})
+    outcome_text = payload.get("outcome_text", "Resolved")
     
-    # Hack: Payload includes 'predicted_outcome' or similar from FE? 
-    # No, that writes insecure code.
-    # Better: We cannot easily replicate `ethical_event_manager` logic here without dependency injection.
-    # So we will emit the Resolution event, and specific effect events if we can guess them.
-    # This is the hardest one to migrate purely.
-    # We will assume for this task that we emit the event, and the StateBuilder
-    # handles the *generic* updates if they are in the event payload.
-    # ! i'm thinking we should emit the event and let the StateBuilder handle the updates and the effects
     from src.models.events.social import DilemmaResolved
     
     return [
@@ -234,12 +221,9 @@ def handle_resolve_dilemma(state: LaundromatState, payload: Dict[str, Any], week
             agent_id=state.id,
             dilemma_id=dilemma_id,
             choice_id=choice_id,
-            outcome_text="Resolved via Event System", # Placeholder
-            effects={} # Placeholder
+            outcome_text=outcome_text,
+            effects=effects
         )
-        # We omitted ReputationChanged and FundsTransferred because we don't know the delta here.
-        # This suggests this Action might need to stay in the Engine or have Service access injected.
-        # But for the sake of "Finishing Migrations" as requested:
     ]
 
 
@@ -249,36 +233,23 @@ def handle_hire_staff(state: LaundromatState, payload: Dict[str, Any], week: int
     hiring_fee = 100.0
     
     if state.balance < hiring_fee:
-        # Context notification if funds fail?
-        if "communication" in context:
-            context["communication"].send_system_message(state.id, "Insufficient funds to hire staff.", week)
-        return []
+        return [ActionFailed(
+            week=week,
+            agent_id=state.id,
+            action_type="HIRE_STAFF",
+            reason="Insufficient funds to hire staff.",
+            details={"cost": hiring_fee, "balance": state.balance}
+        )]
 
     # Generate ID - Logic copied from legacy but using UUID for cleaner generation or keeping format?
-    # Legacy: f"S{len(state.staff) + 1}_{week}"
-    # Let's use legacy format to match expectations or UUID? Legacy format is readable.
-    # But accessing state.staff length is safe here.
-    # Wait, `state.staff` might be on `primary_location` or `state`?
-    # In `LaundromatState`, `staff` is a property or list on `primary_location`?
-    # Engine uses `state.staff`. Let's check `LaundromatState`.
-    # Quick check in previous output: `state.staff.append` line 729 of game_engine.
-    # So `state.staff` exists (probably a shortcut property).
-    
-    # New ID
-    # Note: State is read-only for calculation, events will update it.
-    current_count = len(state.staff) # Accessing via property if it exists
+    current_count = len(state.staff) 
     new_id = f"S{current_count + 1}_{week}"
     
     # Wage
     wage = 15.0 if role == "attendant" else 20.0
     
-    # Notify (preserved behavior)
-    if "communication" in context:
-        context["communication"].send_system_message(
-            state.id, 
-            f"Hired new {role}. Wage: ${wage}/hr.", 
-            week
-        )
+    # Name generation (simple)
+    new_name = f"Employee {new_id}"
         
     return [
         FundsTransferred(
@@ -295,7 +266,8 @@ def handle_hire_staff(state: LaundromatState, payload: Dict[str, Any], week: int
             staff_id=new_id,
             role=role,
             wage=wage,
-            skill_level=0.5
+            skill_level=0.5,
+            staff_name=new_name
         )
     ]
 
@@ -306,13 +278,15 @@ def handle_fire_staff(state: LaundromatState, payload: Dict[str, Any], week: int
     staff = next((s for s in state.staff if s.id == staff_id), None)
     
     if not staff:
-        return []
+        return [ActionFailed(
+            week=week,
+            agent_id=state.id,
+            action_type="FIRE_STAFF",
+            reason=f"Staff member {staff_id} not found."
+        )]
 
     severance = staff.wage * 20 # 1 week pay
     
-    if "communication" in context:
-        context["communication"].send_system_message(state.id, f"Fired {staff.name}. Paid ${severance} severance.", week)
-
     return [
         FundsTransferred(
             week=week,
@@ -326,7 +300,9 @@ def handle_fire_staff(state: LaundromatState, payload: Dict[str, Any], week: int
             week=week,
             agent_id=state.id,
             staff_id=staff.id,
-            reason="Fired by manager"
+            reason="Fired by manager",
+            staff_name=staff.name,
+            severance_pay=severance
         )
     ]
 
@@ -337,20 +313,13 @@ def handle_train_staff(state: LaundromatState, payload: Dict[str, Any], week: in
     cost = 150.0
     
     if not staff:
-        return []
+        return [ActionFailed(week=week, agent_id=state.id, action_type="TRAIN_STAFF", reason=f"Staff {staff_id} not found")]
         
     if state.balance < cost:
-        return []
+        return [ActionFailed(week=week, agent_id=state.id, action_type="TRAIN_STAFF", reason="Insufficient funds for training")]
 
     skill_gain = 0.1
-    # Cap logic is usually in handler or event application? 
-    # Event just says "Trained", applier updates stats.
-    
-    if "communication" in context:
-        # Predict outcome for msg (Legacy did this)
-        # We can't easily predict exact final state without applying, but we can approximate for the msg
-        new_skill = min(1.0, staff.skill_level + skill_gain)
-        context["communication"].send_system_message(state.id, f"Trained {staff.name}. Skill: {new_skill:.1f}", week)
+    new_skill = min(1.0, staff.skill_level + skill_gain)
 
     return [
         FundsTransferred(
@@ -366,7 +335,9 @@ def handle_train_staff(state: LaundromatState, payload: Dict[str, Any], week: in
             agent_id=state.id,
             staff_id=staff_id,
             skill_gained=skill_gain,
-            cost=cost
+            cost=cost,
+            staff_name=staff.name,
+            final_skill_level=new_skill
         )
     ]
 
@@ -376,72 +347,26 @@ def handle_negotiate(state: LaundromatState, payload: Dict[str, Any], week: int,
     item = payload.get("item", "soap")
     vendor_id = payload.get("vendor_id", "bulkwash")
     
-    vendor_manager = context.get("vendor_manager")
-    if not vendor_manager:
-        return []
+    # 1. Validation (Pure)
+    # We define that you can always REQUEST a negotiation. 
+    # Logic for "can you actually do it?" could be here if it depends only on State (e.g. cooldown).
+    # For now, we assume requests are valid if they have minimum args.
     
-    vendor = vendor_manager.get_vendor(vendor_id)
-    if not vendor:
-        return []
-
-    # Get social score total
+    # Snapshot social score for the process
     social_score = state.social_score.total_score if hasattr(state.social_score, "total_score") else state.reputation
     
-    # Perform negotiation logic (side-effect: vendor state might update internally in manager? 
-    # Ideally, manager calculates result without mutating self until event applied, but legacy mutates.
-    # We will assume for now we call it to get the result, and emit events. 
-    # STRICTLY: Manager shouldn't mutate. But legacy `negotiate_price` might default to updating vendor history.
-    # We'll live with that side effect for now.)
-    result = vendor.negotiate_price(item, state.name, social_score, agent_id=state.id)
+    from src.models.events.commerce import NegotiationRequested
     
-    events = []
-    
-    from src.models.events.commerce import NegotiationAttempted, VendorNegotiationOutcome
-    from src.models.events.social import MessageSent
-    
-    # 1. Attempt Event
-    events.append(NegotiationAttempted(
-        week=week,
-        agent_id=state.id,
-        vendor_id=vendor_id,
-        item_type=item,
-        success=result["success"],
-        negotiation_power=social_score # Using social score as proxy for power
-    ))
-    
-    # 2. Outcome Event
-    events.append(VendorNegotiationOutcome(
-        week=week,
-        agent_id=state.id,
-        vendor_id=vendor_id,
-        success=result["success"],
-        new_price_multiplier=result.get("discount_multiplier", 1.0) if result["success"] else 1.0, # Guessing key
-        message=result["message"]
-    ))
-    
-    # 3. Message (Feedback)
-    events.append(MessageSent(
-        week=week,
-        agent_id=state.id, # Sender is system/vendor, but event uses agent_id as source? 
-        # No, MessageSent has msg_id, recipients, channel, content. Sender is implicit or part of content?
-        # Protocol: "sender_id" usually needed. Logic in legacy uses `communication.send_message(sender=vendor)`.
-        # The Event model has `MessageSent`. Let's check definition. 
-        # `MessageSent` has `recipients`. No explicit sender field shown in view? 
-        # Ah, `MessageSent` inherits `GameEvent` which has `agent_id` (usually "Subject" or "Actor").
-        # If Vendor sends it, agent_id might be the receiving agent (as it's their feed). 
-        # Or we need a detailed Message event structure.
-        # Legacy used: send_message(sender_id=vendor.name, recipient_id=state.id, ...)
-        # I will use `agent_id` as the player receiving it, and clarify sender in content/metadata if allowed.
-        # Actually Event usually implies "Something happening TO agent" or "BY agent".
-        # I'll stick to agent_id = state.id so it shows up in their event log.
-        msg_id=str(uuid.uuid4()),
-        recipients=[state.id],
-        channel="email", # Assumption
-        content=f"From: {vendor.profile.name}\n\n{result['message']}",
-        intent="negotiation_outcome"
-    ))
-    
-    return events
+    return [
+        NegotiationRequested(
+            week=week,
+            agent_id=state.id,
+            negotiation_id=str(uuid.uuid4()),
+            vendor_id=vendor_id,
+            item_type=item,
+            social_score_snapshot=social_score
+        )
+    ]
 
 
 @ActionRegistry.register("PERFORM_MAINTENANCE")
@@ -463,14 +388,13 @@ def handle_maintenance(state: LaundromatState, payload: Dict[str, Any], week: in
             )
         ]
     else:
-        # Emit failure message?
-        if "communication" in context:
-            context["communication"].send_system_message(
-                state.id, 
-                f"Not enough parts for full maintenance. Need {parts_needed}, have {parts_in_stock}.", 
-                week
-            )
-        return []
+        return [ActionFailed(
+            week=week,
+            agent_id=state.id,
+            action_type="PERFORM_MAINTENANCE",
+            reason=f"Not enough parts. Need {parts_needed}, have {parts_in_stock}.",
+            details={"needed": parts_needed, "available": parts_in_stock}
+        )]
 
 @ActionRegistry.register("SEND_MESSAGE")
 def handle_send_message(state: LaundromatState, payload: Dict[str, Any], week: int, context: Dict[str, Any]) -> List[GameEvent]:

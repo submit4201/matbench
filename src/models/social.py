@@ -39,6 +39,7 @@ class TicketStatus(str, Enum):
     """Status of a support ticket."""
     OPEN = "open"
     RESOLVED = "resolved"
+    IGNORED = "ignored"
     EXPIRED = "expired"
 
 

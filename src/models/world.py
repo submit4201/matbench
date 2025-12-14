@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from pydantic import model_validator
+from pydantic import model_validator, Field
 from src.config import settings
 from src.engine.finance.models import FinancialLedger, RevenueStream, Loan, FinancialReport, TransactionCategory
 from src.models.base import GameModel
@@ -7,7 +7,7 @@ from src.models.base import GameModel
 # Import from hierarchy to maintain compatibility and use new definitions
 from src.models.hierarchy import (
     Machine, Building, 
-    AgentState, LocationState
+    AgentState, LocationState, WorldState
 )
 from src.models.social import SocialScore
 
@@ -21,6 +21,7 @@ class LaundromatState(GameModel):
     name: str # Agent Name? Or Laundromat Name?
     
     # Composition
+    world: WorldState = Field(default_factory=WorldState)
     agent: Optional[AgentState] = None
     primary_location: Optional[LocationState] = None
     
@@ -104,6 +105,14 @@ class LaundromatState(GameModel):
         self.primary_location.machines = value
         
     @property
+    def staff(self):
+        return self.primary_location.staff
+        
+    @staff.setter
+    def staff(self, value):
+        self.primary_location.staff = value
+        
+    @property
     def inventory(self) -> Dict[str, int]:
         return self.primary_location.inventory
         
@@ -163,6 +172,29 @@ class LaundromatState(GameModel):
     @property
     def revenue_streams(self) -> Dict[str, RevenueStream]:
         return self.primary_location.revenue_streams
+
+    @property
+    def pending_deliveries(self) -> List[Dict[str, Any]]:
+        return self.primary_location.pending_deliveries
+    
+    @pending_deliveries.setter
+    def pending_deliveries(self, value):
+        self.primary_location.pending_deliveries = value
+    @property
+    def bills(self):
+        return self.agent.bills
+        
+    @bills.setter
+    def bills(self, value):
+        self.agent.bills = value
+
+    @property
+    def loans(self):
+        return self.agent.loans
+
+    @loans.setter
+    def loans(self, value):
+        self.agent.loans = value
 
     # --- REMOVED METHODS ---
     # update_reputation, update_social_score, update_inventory_usage, process_week
