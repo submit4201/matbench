@@ -270,6 +270,7 @@ def apply_tax_penalty_applied(state: LaundromatState, event: GameEvent):
 def apply_fiscal_quarter_ended(state: LaundromatState, event: GameEvent):
     """Archive checking or cleanup."""
     payload = event.payload if hasattr(event, "payload") else {}
+    payload = event.payload if hasattr(event, "payload") else {}
     # Reset quarterly accumulators if we had any
     # For now, just mark the transition
     state.agent.tax_info["current_quarter"] = getattr(event, "quarter", payload.get("quarter", 1))
