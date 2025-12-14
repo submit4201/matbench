@@ -361,7 +361,7 @@ def take_action(req: ActionRequest):
         # Apply action IMMEDIATELY for human player (no queuing - fair play with AI)
         my_state = game.engine.states["p1"]
         # Use Engine's Action Processing
-        game.engine._apply_action(my_state, action.model_dump())
+        game.engine.apply_action(my_state, action.model_dump())
         
         state_after = game.engine.states["p1"].model_dump(mode='json', exclude={'ledger'})
         state_after['balance'] = game.engine.states["p1"].balance
@@ -638,7 +638,7 @@ def make_credit_payment(agent_id: str, req: CreditPaymentRequest):
         
         # Apply action IMMEDIATELY via Engine
         # We model_dump() because _apply_action expects a dict
-        game.engine._apply_action(state, action.model_dump())
+        game.engine.apply_action(state, action.model_dump())
         
         return {"status": "success", "new_balance": state.balance, "result": result}
         

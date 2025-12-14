@@ -145,7 +145,7 @@ class GameEngine:
         for agent_id, actions in self.pending_actions.items():
             state = self.states[agent_id]
             for action in actions:
-                self._apply_action(state, action)
+                self.apply_action(state, action)
             self.pending_actions[agent_id] = []
 
         # 2. Process Daily Financials for each agent (single-pass per-agent)
@@ -559,7 +559,7 @@ class GameEngine:
         
         return results
 
-    def _apply_action(self, state: LaundromatState, action: Dict[str, Any]):
+    def apply_action(self, state: LaundromatState, action: Dict[str, Any]):
         """
         Executes an action by looking up its handler, generating events, and applying them.
         """

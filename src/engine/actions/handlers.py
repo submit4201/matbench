@@ -31,15 +31,20 @@ def handle_buy_inventory(state: LaundromatState, payload: Dict[str, Any], week: 
     item = payload.get("item")
     qty = int(payload.get("quantity", 0))
     vendor_id = payload.get("vendor_id", "bulkwash")
-    # Cost should ideally be looked up in context or payload if trusted.
-    # For now, we trust payload or state. But legacy looked up via vendor manager.
-    # Handlers should be pure. We rely on the UI/API to pass correct cost OR we assume standard.
-    # BUT, we can't easily look up vendor price without a service.
-    # HACK: FE must send cost, or we use a "Request" event?
-    # No, we'll assume payload has cost (API `take_action` can enrich it? Or handler calculates if passed context?)
-    # Ideally context has `vendor_manager`.
-    # Let's assume payload has 'cost'.
-    cost = float(payload.get("cost", 0))
+    vendor_manager = context.get("vendor_manager")
+    
+    # Calculate Dynamic Cost
+    calculated_cost = 0.0
+    if vendor_manager:
+        vendor = vendor_manager.get_vendor(vendor_id)
+        if vendor:
+             # Use vendor price logic (negotiated or base)
+             unit_price = vendor.get_price(item, agent_id=state.id)
+             calculated_cost = unit_price * qty
+    
+    # Fallback to payload cost if calculation failed (or for testing)
+    # But prefer calculated cost to avoid "free supplies" exploit
+    cost = calculated_cost if calculated_cost > 0 else float(payload.get("cost", 0))
     arrival_week = int(payload.get("arrival_week", week + 1))
 
     events = []

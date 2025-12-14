@@ -116,7 +116,7 @@ def main():
                 # Apply Action via Engine
                 payload = action.parameters.copy()
                 payload["type"] = action.type.value if hasattr(action.type, 'value') else action.type
-                success = engine._apply_action(my_state, payload)
+                success = engine.apply_action(my_state, payload)
                 if not success:
                     print(f"Action failed or processed via legacy path.")
 
