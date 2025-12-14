@@ -232,7 +232,6 @@ def apply_tax_assessed(state: LaundromatState, event: GameEvent):
     """ Record tax assessment. """
     payload = event.payload if hasattr(event, "payload") else {}
     tax_amount = getattr(event, "tax_amount", payload.get("tax_amount", 0.0))
-    quarter = getattr(event, "quarter", payload.get("quarter", 0))
     
     # Update agent tax info
     state.agent.tax_info["last_assessment_week"] = event.week
@@ -270,6 +269,7 @@ def apply_tax_penalty_applied(state: LaundromatState, event: GameEvent):
 @EventRegistry.register("FISCAL_QUARTER_ENDED")
 def apply_fiscal_quarter_ended(state: LaundromatState, event: GameEvent):
     """Archive checking or cleanup."""
+    payload = event.payload if hasattr(event, "payload") else {}
     # Reset quarterly accumulators if we had any
     # For now, just mark the transition
     state.agent.tax_info["current_quarter"] = getattr(event, "quarter", payload.get("quarter", 1))
@@ -338,7 +338,8 @@ def apply_real_estate_market_refreshed(state: LaundromatState, event: GameEvent)
         # Safest to just set it if we can.
         try:
              setattr(state, "market_listings", listings)
-        except:
+        except (AttributeError, TypeError):
+             # Ignore if we cannot set the attribute (compatibility fallback)
              pass
 
 

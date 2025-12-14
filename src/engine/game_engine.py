@@ -212,7 +212,6 @@ class GameEngine:
         soap_sold = 0  # Ensure soap_sold is always defined
         
         customers_needing_soap = int(customer_count * 0.5)
-        soap_sold = 0  # Initialize to prevent UnboundLocalError
         
         detergent_stream = state.revenue_streams.get("Detergent Sale")
         if detergent_stream and detergent_stream.unlocked:
@@ -512,15 +511,15 @@ class GameEngine:
                 # Compute FinancialReport (single source of truth)
                 financial_report = self._process_financials(state, seasonal_mods, customer_count_est)
                 
+                # Create event from report (using helper for single mapping)
+                report_event = self._build_weekly_report_event(state, financial_report)
+                weekly_events.append(report_event)
+                
                 # Financial System Orchestration (uses data from event)
                 # Note: We need to reconstruct FinancialReport for FinancialSystem here
                 # until FinancialSystem is also refactored to use events
                 financial_report = self._financial_report_from_event(report_event)
                 self.financial_system.process_week(state, self.time_system.current_week, financial_report)
-                
-                # Create event from report (using helper for single mapping)
-                report_event = self._build_weekly_report_event(state, financial_report)
-                weekly_events.append(report_event)
                 
                 results[agent_id] = {
                     "revenue": round(financial_report.total_revenue, 2),
@@ -700,8 +699,8 @@ class GameEngine:
         
         # Note: No state mutation occurs here. This function returns an event describing the financials;
         # the actual ledger update happens in the event handler, not in this processing function.
-        total_operating_expenses = (expense_rent + expense_utilities + expense_labor + 
-                                   expense_maintenance + expense_insurance + expense_other)
+        report.total_operating_expenses = (report.expense_rent + report.expense_utilities + report.expense_labor + 
+                                           report.expense_maintenance + report.expense_insurance + report.expense_other)
         
         report.operating_income = report.gross_profit - report.total_operating_expenses
         

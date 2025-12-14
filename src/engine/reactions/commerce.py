@@ -1,4 +1,3 @@
-from typing import Dict, Any, List
 import uuid
 import logging
 
@@ -8,11 +7,9 @@ from src.models.events.core import GameEvent
 from src.models.events.commerce import (
     NegotiationRequested, 
     NegotiationAttempted, 
-    VendorNegotiationOutcome,
-    VendorRelationshipChanged
+    VendorNegotiationOutcome
 )
 from src.models.events.social import MessageSent
-from src.models.events.finance import BillPaid, BillIgnored
 
 logger = logging.getLogger(__name__)
 
