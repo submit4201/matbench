@@ -187,11 +187,6 @@ def _log_ai_response(agent_id: str, week: int, thinking: List[str], actions: Lis
         print(f"[AI Log] Failed to write log: {e}")
 
 
-# Legacy _apply_action removed. Actions now handled via GameEngine.submit_action and ActionRegistry.
-
-                state.staff.remove(staff_member)
-                state.update_social_score("employee_relations", -2.0)
-                state.update_social_score("community_standing", -0.5)
 
 
 
@@ -641,10 +636,9 @@ def make_credit_payment(agent_id: str, req: CreditPaymentRequest):
             agent_id, req.payment_id, req.amount, game.engine.time_system.current_week
         )
         
-        # Deduct balance manually since we bypassed _apply_action's generic handler for now
-        # OR: We should use _apply_action. Let's reuse _apply_action logic.
-        
-        _apply_action(state, action)
+        # Apply action IMMEDIATELY via Engine
+        # We model_dump() because _apply_action expects a dict
+        game.engine._apply_action(state, action.model_dump())
         
         return {"status": "success", "new_balance": state.balance, "result": result}
         
