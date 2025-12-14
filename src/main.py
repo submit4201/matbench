@@ -9,9 +9,7 @@ from src.agents.base_agent import Observation, ActionType, Message
 from src.agents.human_agent import HumanAgent
 from src.agents.llm_agent import LLMAgent
 from src.engine.llm_npc_factory import NPCFactory
-from src.engine.processing import process_week_logic
 from src.engine.game_engine import GameEngine
-
 def main():
     print("Initializing Laundromat Tycoon...")
     
@@ -120,26 +118,39 @@ def main():
                 if not success:
                     print(f"Action failed or processed via legacy path.")
 
-        # World Simulation (Legacy for now)
-        weekly_revenue = {pid: 0.0 for pid in laundromats}
-        weekly_visits = {pid: 0 for pid in laundromats}
-        laundromat_list = list(laundromats.values())
+        # World Simulation (Engine Event Sourcing)
+        # We simulate 7 days of activity to match the weekly loop structure of main.py
+        # Ideally main.py would loop daily, but for now we iterate to ensure engine events fire.
+        from src.engine.core.time import Day
         
-        for customer in customers:
-            choice = customer.decide_laundromat(laundromat_list)
-            if choice:
-                if customer.visit_laundromat(choice, time_system.current_week):
-                    weekly_visits[choice.id] += 1
-                    weekly_revenue[choice.id] += choice.price
-                
-        for pid, p in laundromats.items():
-            revenue = weekly_revenue[pid]
-            effects = event_manager.get_active_effects(pid)
-            active_machines = max(0, len(p.machines) - effects["machine_loss"])
-            expenses = 100 + (active_machines * 5)
-            
-            process_week_logic(p, revenue, expenses)
-            print(f"{p.name}: Visits={weekly_visits[pid]}, Revenue=${revenue:.2f}, Balance=${p.balance:.2f}")
+        # Reset to Monday if not already (safeguard)
+        # time_system.current_day = Day.MONDAY 
+
+        days_in_week = 7
+        for day_idx in range(days_in_week):
+             # Advance day textually for engine if needed, or rely on engine to check phase
+             # engine.process_daily_turn() handles daily revenue and checks for Sunday to do weekly logic
+             
+             # If it's Sunday (index 6), the engine will trigger process_week() inside process_daily_turn()
+             # We need to make sure time_system reflects the day.
+             
+             # Sync time system day explicitly?
+             # existing time_system logic might be simple.
+             
+             turn_results = engine.process_daily_turn()
+             
+             # If Sunday/End of Week, log results
+             if day_idx == 6: # Sunday
+                 for pid, p in laundromats.items():
+                     if pid in turn_results:
+                         res = turn_results[pid]
+                         rev = res.get("revenue", 0)
+                         bal = res.get("new_balance", 0)
+                         cust = res.get("customers", 0)
+                         print(f"{p.name}: Cust={cust}, Revenue=${rev}, Balance=${bal}")
+
+             # Advance internal day counter if time_system doesn't do it automatically in the loop
+             engine.time_system.advance_day()
 
     print("\n=== GAME OVER ===")
 

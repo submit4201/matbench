@@ -216,6 +216,22 @@ def apply_weekly_report_generated(state: LaundromatState, event: GameEvent):
     
     state.financial_reports.append(report)
 
+    # 5. Archive to legacy history lists (for charts/backward compatibility)
+    # Using 'get_val' for consistency with report
+    if hasattr(state.agent, "history"):
+        h = state.agent.history
+        h["balance"].append(state.balance) # Ending balance
+        h["revenue"].append(get_val("total_revenue"))
+        h["expenses"].append(get_val("total_operating_expenses"))
+        # Use simple accessors for others if available
+        if "social_score" in h and hasattr(state.social_score, "total_score"):
+            h["social_score"].append(state.social_score.total_score)
+        if "reputation" in h and hasattr(state, "reputation"):
+            h["reputation"].append(state.reputation)
+        if "customers" in h:
+            h["customers"].append(state.active_customers)
+
+
 
 # --- Orphan Event Handlers (Future Feature Support) ---
 
